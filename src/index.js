@@ -1,36 +1,42 @@
 
-const init = (firestore, portFromElm, portToElm) => {
+exports.init = (firestore, portFromElm, portToElm) => {
   portFromElm.subscribe(([task, docOp]) => {
-    switch (task) {
-      case "CollectionSubscription":
-        subscribeToCollection(firestore, portToElm, docOp);
-        break;
+    try {
+      console.log("Task", task);
+      switch (task) {
+        case "CollectionSubscription":
+          subscribeToCollection(firestore, portToElm, docOp);
+          break;
 
-      case "CreateDocument":
-        createDocument(firestore, portToElm, docOp);
-        break;
+        case "CreateDocument":
+          createDocument(firestore, portToElm, docOp);
+          break;
 
-      case "GetDocument":
-        getDocument(firestore, portToElm, docOp);
-        break;
+        case "GetDocument":
+          getDocument(firestore, portToElm, docOp);
+          break;
 
-      case "UpdateDocument":
-        updateDocument(firestore, portToElm, docOp);
-        break;
+        case "UpdateDocument":
+          updateDocument(firestore, portToElm, docOp);
+          break;
 
-      case "DeleteDocument":
-        deleteDocument(firestore, portToElm, docOp);
-        break;
+        case "DeleteDocument":
+          deleteDocument(firestore, portToElm, docOp);
+          break;
 
-      default:
-        console.error("Unknown task for elm-firebase:", task);
-        break;
+        default:
+          console.error("Unknown task for elm-firebase:", task);
+          break;
+      };
+    } catch (err) {
+      console.log(err) // TODO Send error to elm with portToElm
     };
   });
 }
 
 
 const subscribeToCollection = (firestore, portToElm, collectionPath) => {
+  console.log("subscribeToCollection", collectionPath)
   firestore
     .collection(collectionPath)
     .onSnapshot(
@@ -48,8 +54,21 @@ const subscribeToCollection = (firestore, portToElm, collectionPath) => {
           // Created events. Reason: the Elm program is set up so it auto
           // redirects to the newly created document. This allows for
           // synchronous Event creation.
-
+          console.log(change.doc.data())
           if (change.type === "modified" || change.type === "added") {
+
+//      Try this shape?? With something like
+//        Decode.oneOf [ Decode.field "documentUpdated" decodeDocumentUpdated ]
+//
+//            portToElm.send({
+//              documentUpdated: {
+//                path: collectionPath,
+//                id: change.doc.id,
+//                state: change.doc.metadata.hasPendingWrites ? "cached" : "saved",
+//                data: change.doc.data(),
+//              }
+//            });
+
             portToElm.send({
               operation: "DocumentUpdated",
               path: collectionPath,
@@ -71,7 +90,7 @@ const subscribeToCollection = (firestore, portToElm, collectionPath) => {
         });
       },
       err => {
-        console.eror("subscribeToCollection", err)
+        console.eror("subscribeToCollection", err.code)
     });
 };
 

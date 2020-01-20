@@ -43,6 +43,11 @@ type Operation
     | DeleteDocument DocumentPath
 
 
+watchCollection : CollectionPath -> Encode.Value
+watchCollection =
+    CollectionSubscription >> encodeOperation
+
+
 encodeOperation : Operation -> Encode.Value
 encodeOperation op =
     case op of
