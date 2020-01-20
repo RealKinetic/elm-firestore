@@ -6,7 +6,5 @@
   "repository": "git@github.com:RealKinetic/elm-firebase.git",
   "author": "Coury Ditch <coury.ditch@realkinetic.com>",
   "license": "MIT",
-  "dependencies": {
-    "firebase": "^7.7.0"
-  }
+  "dependencies": {}
 }
