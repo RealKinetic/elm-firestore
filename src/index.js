@@ -51,7 +51,7 @@ const subscribeToCollection = (firestore, portToElm, collectionPath) => {
 
           if (change.type === "modified" || change.type === "added") {
             portToElm.send({
-              operation: "documentUpdated",
+              operation: "DocumentUpdated",
               path: collectionPath,
               id: change.doc.id,
               state: change.doc.metadata.hasPendingWrites ? "cached" : "saved",
@@ -59,7 +59,7 @@ const subscribeToCollection = (firestore, portToElm, collectionPath) => {
             });
           } else if (change.type === "removed") {
             portToElm.send({
-              operation: "documentDeleted",
+              operation: "DocumentDeleted",
               path: collectionPath,
               id: change.doc.id,
               state: change.doc.metadata.hasPendingWrites ? "deleting" : "deleted",
@@ -89,11 +89,11 @@ const createDocument = (firestore, portToElm, document) => {
   }
 
   portToElm.send({
-    operation: "documentCreated",
+    operation: "DocumentCreated",
     path: document.path,
     id: document.id,
     state: "new",
-    data: document.value,
+    data: document.data,
   });
 
   // If createOnSave, then save and update Elm
@@ -105,15 +105,15 @@ const createDocument = (firestore, portToElm, document) => {
     .set(document.value)
     .then(() => {
       portToElm.send({
-        operation: "documentCreated",
+        operation: "DocumentCreated",
         path: document.path,
         id: document.id,
         state: "saved",
-        data: document.value,
+        data: document.data,
       });
     })
     .catch(err => {
-      console.error("createDocument", err)
+      console.error("CreateDocument", err)
     });
 };
 
@@ -126,7 +126,7 @@ const getDocument = (firestore, portToElm, document) => {
     .get()
     .then(doc => {
       portToElm.send({
-        operation: "documentUpdated",
+        operation: "DocumentUpdated",
         path: document.path,
         id: document.id,
         state: "saved",
@@ -134,7 +134,7 @@ const getDocument = (firestore, portToElm, document) => {
       });
     })
     .catch(err => {
-      console.eror("getDocument", err);
+      console.eror("GetDocument", err);
     });
 };
 
@@ -147,7 +147,7 @@ const updateDocument = (firestore, portToElm, document) => {
     .update(document.data)
     .then(() => {
       portToElm.send({
-        operation: "documentUpdated",
+        operation: "DocumentUpdated",
         path: document.path,
         id: document.id,
         state: "saved",
@@ -155,7 +155,7 @@ const updateDocument = (firestore, portToElm, document) => {
       });
     })
     .catch(err => {
-      console.eror("updateDocument", err);
+      console.eror("UpdateDocument", err);
     });
 };
 
@@ -165,10 +165,10 @@ const deleteDocument = (firestore, portToElm, document) => {
   firestore
     .collection(document.path)
     .doc(document.id)
-    .delete(document.data)
+    .delete()
     .then(() => {
       portToElm.send({
-        operation: "documentDeleted",
+        operation: "DocumentDeleted",
         path: document.path,
         id: document.id,
         state: "deleted",
@@ -176,6 +176,6 @@ const deleteDocument = (firestore, portToElm, document) => {
       });
     })
     .catch(err => {
-      console.eror("deleteDocument", err);
+      console.eror("DeleteDocument", err);
     });
 };
