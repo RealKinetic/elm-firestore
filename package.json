@@ -1,10 +1,10 @@
 {
-  "name": "elm-firebase",
+  "name": "@realkinetic/elm-firebase",
   "version": "1.0.0",
   "description": "Serve Firebase applications using Elm",
   "main": "index.js",
   "repository": "git@github.com:RealKinetic/elm-firebase.git",
-  "author": "Coury Ditch <coury.ditch@realkinetic.com>",
+  "contributors": [ "Coury Ditch", "Alex Campbell", "Robert Kluin" ],
   "license": "MIT",
   "dependencies": {}
 }
