@@ -47,8 +47,9 @@ const subscribeToCollection = (firestore, portToElm, collectionPath) => {
         // Would get rid of a bunch of processPortUpdate and updateIfChanged
 
         snapshot.docChanges().forEach(change => {
+          console.log("docChanges", change)
           // TODO - Do we still want this?? Especially in a library?
-          // vvvvvvv -- vvvvvv -- vvvvvvv -- vvvvvv -- vvvvvvv -- vvvvvv
+          // vvvvvvv -- vvvvvvv -- vvvvvvv -- vvvvvvv -- vvvvvvv
           //
           // We want "added" to flow into Elm as Updated events, not as
           // Created events. Reason: the Elm program is set up so it auto
@@ -56,19 +57,6 @@ const subscribeToCollection = (firestore, portToElm, collectionPath) => {
           // synchronous Event creation.
           console.log(change.doc.data())
           if (change.type === "modified" || change.type === "added") {
-
-//      Try this shape?? With something like
-//        Decode.oneOf [ Decode.field "documentUpdated" decodeDocumentUpdated ]
-//
-//            portToElm.send({
-//              documentUpdated: {
-//                path: collectionPath,
-//                id: change.doc.id,
-//                state: change.doc.metadata.hasPendingWrites ? "cached" : "saved",
-//                data: change.doc.data(),
-//              }
-//            });
-
             portToElm.send({
               operation: "DocumentUpdated",
               path: collectionPath,
@@ -99,7 +87,7 @@ const subscribeToCollection = (firestore, portToElm, collectionPath) => {
 const createDocument = (firestore, portToElm, document) => {
   const collection = firestore.collection(document.path);
   let doc;
-
+  console.log("createDocument", document);
   if (document.id === "") {
     doc = collection.doc(); // Generate a unique ID
     document.id = doc.id;
@@ -121,7 +109,7 @@ const createDocument = (firestore, portToElm, document) => {
   }
 
   doc
-    .set(document.value)
+    .set(document.data)
     .then(() => {
       portToElm.send({
         operation: "DocumentCreated",
