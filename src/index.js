@@ -26,10 +26,10 @@ exports.init = ({ firestore, portFromElm, portToElm, debug = false }) => {
     subNames: subNames,
     cmdNames: cmdNames,
     debug: debug,
-    logger: (type, data) => {
-      if (debug) { console.log("elm-firestore", type, data) };
+    logger: function(type, data) {
+      if (this.debug) { console.log("elm-firestore", type, data) };
     },
-    isWatching: (path) => {
+    isWatching: function(path) {
       return (this.collections[path] && this.collections[path].isWatching);
     },
   };
