@@ -21,11 +21,12 @@ firebase.auth().useDeviceLanguage();
 let elmApp = Elm.Main.init();
 
 // Connect Elm + Firestore
-elmFirebase.init(
+elmFirebase.init({
   firestore,
-  elmApp.ports.toFirebase,
-  elmApp.ports.fromFirebase
-);
+  portFromElm: elmApp.ports.toFirebase,
+  portToElm: elmApp.ports.fromFirebase,
+  debug: true
+});
 
 /**
  *
@@ -35,7 +36,6 @@ elmFirebase.init(
 
 firebase.auth().onAuthStateChanged(user => {
   if (user) {
-    console.log("User", user.uid)
     elmApp.ports.userSignedIn.send(user.uid)
   } else {
     elmApp.ports.userSignedIn.send(null);

@@ -1,6 +1,7 @@
 port module Main exposing (Model, main)
 
 import Browser
+import Dict
 import Firestore.Cmd exposing (Id(..))
 import Firestore.Collection as Collection exposing (Collection)
 import Firestore.Sub
@@ -84,7 +85,9 @@ view model =
                         [ Html.text <| "User: " ++ userId
                         , Html.br [] []
                         , Html.button [ onClick (NewNote (Note "foo" "bar")) ]
-                            [ Html.text "Do Action Thing" ]
+                            [ Html.text "Create Note" ]
+                        , Html.button [ onClick (UpdateNote (Note "fooz" "barz")) ]
+                            [ Html.text "Update Note" ]
                         , Html.div [] (Collection.mapWithId viewNote model.notes)
                         ]
 
@@ -110,7 +113,7 @@ type Msg
     = EverySecond Posix
     | SignIn
     | NewNote Note
-    | UpdateNote String
+    | UpdateNote Note
     | DeleteNote String
     | SignedIn String
     | FirestoreMsg Firestore.Sub.Msg
@@ -150,20 +153,33 @@ update msg model =
                     Firestore.Cmd.watchCollection notes
                         |> Firestore.Cmd.encode
                         |> toFirebase
+
+                --Cmd.none
             in
             ( { model | userId = Just userId, notes = notes }
             , watchNotes
             )
 
-        NewNote foo ->
+        NewNote newNote ->
             ( model
-            , Firestore.Cmd.createDocument model.notes True GenerateId foo
+            , Firestore.Cmd.createDocument model.notes True GenerateId newNote
                 |> Firestore.Cmd.encode
                 |> toFirebase
             )
 
-        UpdateNote string ->
-            ( model, Cmd.none )
+        UpdateNote note ->
+            let
+                id =
+                    model.notes.items
+                        |> Dict.keys
+                        |> List.head
+                        |> Maybe.withDefault "error"
+            in
+            ( model
+            , Firestore.Cmd.updateDocument model.notes id note
+                |> Firestore.Cmd.encode
+                |> toFirebase
+            )
 
         DeleteNote string ->
             ( model, Cmd.none )

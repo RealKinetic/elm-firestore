@@ -1,6 +1,6 @@
 module Firestore.Cmd exposing
     ( Id(..)
-    , Operation
+    , Msg
     , createDocument
     , encode
     , preparePortWrites
@@ -15,16 +15,15 @@ import Json.Encode as Encode
 import Set
 
 
-type Operation
+type Msg
     = CollectionSubscription String
     | CreateDocument Bool Document
     | GetDocument Path
     | UpdateDocument Document
     | DeleteDocument Path
-    | Batch (List Operation)
 
 
-watchCollection : Collection a -> Operation
+watchCollection : Collection a -> Msg
 watchCollection { path } =
     CollectionSubscription path
 
@@ -34,7 +33,7 @@ type Id
     | Id String
 
 
-createDocument : Collection a -> Bool -> Id -> a -> Operation
+createDocument : Collection a -> Bool -> Id -> a -> Msg
 createDocument { path, encoder } createOnSave id data =
     let
         id_ =
@@ -53,7 +52,7 @@ createDocument { path, encoder } createOnSave id data =
         }
 
 
-updateDocument : Collection a -> String -> a -> Operation
+updateDocument : Collection a -> String -> a -> Msg
 updateDocument { path, encoder } id updatedDoc =
     UpdateDocument
         { path = path
@@ -63,59 +62,63 @@ updateDocument { path, encoder } id updatedDoc =
         }
 
 
-encode : Operation -> Encode.Value
+encode : Msg -> Encode.Value
 encode op =
-    case op of
-        CollectionSubscription path ->
-            Encode.list identity
-                [ Encode.string "CollectionSubscription"
-                , Encode.string path
+    let
+        helper { name, data } =
+            Encode.object
+                [ ( "name", Encode.string name )
+                , ( "data", data )
                 ]
+    in
+    helper <|
+        case op of
+            CollectionSubscription path ->
+                { name = "CollectionSubscription"
+                , data = Encode.string path
+                }
 
-        CreateDocument createOnSave { path, id, data } ->
-            Encode.list identity
-                [ Encode.string "CreateDocument"
-                , Encode.object
-                    [ ( "path", Encode.string path )
-                    , ( "id", Encode.string id )
-                    , ( "data", data )
-                    , ( "createOnSave", Encode.bool createOnSave )
-                    ]
-                ]
+            CreateDocument createOnSave { path, id, data } ->
+                { name = "CreateDocument"
+                , data =
+                    Encode.object
+                        [ ( "path", Encode.string path )
+                        , ( "id", Encode.string id )
+                        , ( "data", data )
+                        , ( "createOnSave", Encode.bool createOnSave )
+                        ]
+                }
 
-        GetDocument { path, id } ->
-            Encode.list identity
-                [ Encode.string "GetDocument"
-                , Encode.object
-                    [ ( "path", Encode.string path )
-                    , ( "id", Encode.string id )
-                    ]
-                ]
+            GetDocument { path, id } ->
+                { name = "GetDocument"
+                , data =
+                    Encode.object
+                        [ ( "path", Encode.string path )
+                        , ( "id", Encode.string id )
+                        ]
+                }
 
-        UpdateDocument { path, id, data } ->
-            Encode.list identity
-                [ Encode.string "UpdateDocument"
-                , Encode.object
-                    [ ( "path", Encode.string path )
-                    , ( "id", Encode.string id )
-                    , ( "data", data )
-                    ]
-                ]
+            UpdateDocument { path, id, data } ->
+                { name = "UpdateDocument"
+                , data =
+                    Encode.object
+                        [ ( "path", Encode.string path )
+                        , ( "id", Encode.string id )
+                        , ( "data", data )
+                        ]
+                }
 
-        DeleteDocument { path, id } ->
-            Encode.list identity
-                [ Encode.string "DeleteDocument"
-                , Encode.object
-                    [ ( "path", Encode.string path )
-                    , ( "id", Encode.string id )
-                    ]
-                ]
-
-        Batch ops ->
-            Encode.list encode ops
+            DeleteDocument { path, id } ->
+                { name = "DeleteDocument"
+                , data =
+                    Encode.object
+                        [ ( "path", Encode.string path )
+                        , ( "id", Encode.string id )
+                        ]
+                }
 
 
-preparePortWrites : Collection a -> ( List Operation, Collection a )
+preparePortWrites : Collection a -> ( List Msg, Collection a )
 preparePortWrites collection =
     let
         writes =
