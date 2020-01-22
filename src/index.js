@@ -35,6 +35,7 @@ exports.init = ({ firestore, portFromElm, portToElm, debug = false }) => {
   };
 
   portFromElm.subscribe(msg => {
+    console.log(state)
     state.logger("new-msg", msg);
     try {
       switch (msg.name) {
@@ -67,7 +68,7 @@ exports.init = ({ firestore, portFromElm, portToElm, debug = false }) => {
           break;
       };
     } catch (err) {
-      console.log(err) // TODO Send error to elm with portToElm
+      console.error(err) // TODO Send error to elm with portToElm
     };
   });
 }
@@ -230,7 +231,7 @@ const readDocument = (state, document) => {
       });
     })
     .catch(err => {
-      console.eror("readDocument", err);
+      console.error("readDocument", err);
     });
 };
 
@@ -262,7 +263,7 @@ const updateDocument = (state, document) => {
       };
     })
     .catch(err => {
-      console.eror("updateDocument", err);
+      console.error("updateDocument", err);
     });
 };
 
@@ -294,6 +295,6 @@ const deleteDocument = (state, document) => {
       };
     })
     .catch(err => {
-      console.eror("deleteDocument", err);
+      console.error("deleteDocument", err);
     });
 };
