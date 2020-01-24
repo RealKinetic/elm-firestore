@@ -8,8 +8,10 @@ module Firestore.Sub exposing
     )
 
 import Dict exposing (Dict)
-import Firestore.Collection exposing (Collection, Item(..))
-import Firestore.Document as Document exposing (Document, State(..))
+import Firestore.Collection as Collection
+import Firestore.Document as Document exposing (Document)
+import Firestore.Internal exposing (Collection(..))
+import Firestore.State exposing (Item(..), State(..))
 import Json.Decode as Decode exposing (Decoder)
 
 
@@ -84,7 +86,7 @@ processChange :
     -> Collection a
     -> Collection a
 processChange changeType doc collection =
-    if collection.path /= doc.path then
+    if Collection.getPath collection /= doc.path then
         collection
 
     else
@@ -96,7 +98,7 @@ processChangeHelper :
     -> Document
     -> Collection a
     -> Collection a
-processChangeHelper changeType doc collection =
+processChangeHelper changeType doc (Collection collection) =
     let
         decoded : Maybe a
         decoded =
@@ -160,4 +162,4 @@ processChangeHelper changeType doc collection =
                 Nothing ->
                     collection.items
     in
-    { collection | items = updatedItems }
+    Collection { collection | items = updatedItems }

@@ -2,11 +2,10 @@ module Firestore.Document exposing
     ( Document
     , Id
     , Path
-    , State(..)
     , decoder
-    , encodeState
     )
 
+import Firestore.State as State exposing (State)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
@@ -46,5 +45,5 @@ decoder =
     Decode.succeed Document
         |> required "path" Decode.string
         |> required "id" Decode.string
-        |> required "state" decodeState
+        |> required "state" State.decode
         |> required "data" Decode.value

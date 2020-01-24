@@ -1,4 +1,9 @@
-module Firestore.State exposing (Item(..), State(..), decode, encode)
+module Firestore.State exposing
+    ( Item(..)
+    , State(..)
+    , decode
+    , encode
+    )
 
 import Json.Decode as Decode
 import Json.Encode as Encode

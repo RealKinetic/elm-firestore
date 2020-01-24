@@ -168,8 +168,9 @@ update msg model =
         UpdateNote note ->
             let
                 anyOldIdWillDo =
-                    model.notes.items
-                        |> Dict.keys
+                    model.notes
+                        |> Collection.toList
+                        |> List.map Tuple.first
                         |> List.head
                         |> Maybe.withDefault "error"
             in

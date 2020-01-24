@@ -2,7 +2,7 @@ module Firestore.Collection exposing (..)
 
 import Dict exposing (Dict)
 import Firestore.Document as Document
-import Firestore.Internal exposing (Collection(..), Path)
+import Firestore.Internal as Internal exposing (Collection(..), Path)
 import Firestore.State exposing (Item(..), State(..))
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -11,17 +11,17 @@ import Set exposing (Set)
 
 {-| -}
 type alias Collection a =
-    Collection a
+    Internal.Collection a
 
 
 {-| -}
 type alias Comparator a =
-    Comparator a
+    Internal.Comparator a
 
 
 {-| -}
 type alias Path =
-    Path
+    Internal.Path
 
 
 {-| -}
@@ -61,7 +61,7 @@ getWriteQueue (Collection collection) =
 
 
 {-| -}
-toList : Collection a -> List ( Document.Id, Item a )
+toList : Collection a -> List ( Document.Id, a )
 toList (Collection { items }) =
     Dict.foldr
         (\docId (DbItem _ doc) accum -> ( docId, doc ) :: accum)
@@ -87,7 +87,7 @@ get id collection =
     collection
         |> getWithState id
         |> Maybe.andThen
-            (\DbItem state a ->
+            (\(DbItem state a) ->
                 case state of
                     Deleted ->
                         Nothing
@@ -280,12 +280,7 @@ remove id (Collection collection) =
 {-| -}
 getWithState : Document.Id -> Collection a -> Maybe (Item a)
 getWithState id (Collection collection) =
-    case Dict.get id collection.items of
-        Just item ->
-            item
-
-        Nothing ->
-            Nothing
+    Dict.get id collection.items
 
 
 toListWithState : Collection a -> List ( Document.Id, Item a )
@@ -318,7 +313,7 @@ filterWithState fn collection =
 filterMapWithState : (Document.Id -> State -> a -> Maybe b) -> Collection a -> List b
 filterMapWithState filterFn collection =
     collection
-        |> toList
+        |> toListWithState
         |> List.filterMap
             (\( docId, DbItem state doc ) ->
                 filterFn docId state doc

@@ -11,8 +11,10 @@ module Firestore.Cmd exposing
     , watchCollection
     )
 
-import Firestore.Collection as Collection exposing (Collection, Item(..))
-import Firestore.Document as Document exposing (State(..))
+import Firestore.Collection as Collection exposing (Collection)
+import Firestore.Document as Document
+import Firestore.Internal exposing (Collection(..))
+import Firestore.State exposing (Item(..), State(..))
 import Json.Encode as Encode
 import Set
 
@@ -187,7 +189,7 @@ The Saving state is initiated by Javascript and set on the item in Sub.processCh
 
 -}
 processQueue : (Encode.Value -> Cmd msg) -> Collection a -> ( Cmd msg, Collection a )
-processQueue toFirestore collection =
+processQueue toFirestore ((Collection collection_) as collection) =
     let
         writeQueue =
             Collection.getWriteQueue collection
@@ -241,7 +243,7 @@ processQueue toFirestore collection =
         ( Cmd.none, collection )
 
     else
-        ( cmds, { collection | writeQueue = Set.empty } )
+        ( cmds, Collection { collection_ | writeQueue = Set.empty } )
 
 
 
