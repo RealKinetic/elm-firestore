@@ -11,10 +11,8 @@ module Firestore.Cmd exposing
     , watchCollection
     )
 
-import Dict
-import Firestore.Collection as Collection exposing (Collection)
+import Firestore.Collection as Collection exposing (Collection, Item(..))
 import Firestore.Document as Document exposing (State(..))
-import Firestore.Internal exposing (Item(..))
 import Json.Encode as Encode
 import Set
 
@@ -50,7 +48,7 @@ watchCollection :
     }
     -> Cmd msg
 watchCollection { toFirestore, collection } =
-    SubscribeCollection (Collection.path collection)
+    SubscribeCollection (Collection.getPath collection)
         |> encode
         |> toFirestore
 
@@ -62,7 +60,7 @@ unwatchCollection :
     }
     -> Cmd msg
 unwatchCollection { toFirestore, collection } =
-    SubscribeCollection (Collection.path collection)
+    SubscribeCollection (Collection.getPath collection)
         |> encode
         |> toFirestore
 
@@ -123,7 +121,7 @@ createDocumentHelper persist { toFirestore, collection, id, data } =
                     string
     in
     CreateDocument persist
-        { path = Collection.path collection
+        { path = Collection.getPath collection
         , id = id_
         , data = Collection.encodeItem collection data
         }
@@ -141,7 +139,7 @@ readDocument :
     -> Cmd msg
 readDocument { toFirestore, collection, id } =
     ReadDocument
-        { path = Collection.path collection
+        { path = Collection.getPath collection
         , id = id
         }
         |> encode
@@ -158,7 +156,7 @@ updateDocument :
     -> Cmd msg
 updateDocument { toFirestore, collection, id, data } =
     UpdateDocument
-        { path = Collection.path collection
+        { path = Collection.getPath collection
         , id = id
         , data = Collection.encodeItem collection data
         }
@@ -175,7 +173,7 @@ deleteDocument :
     -> Cmd msg
 deleteDocument { toFirestore, collection, id } =
     DeleteDocument
-        { path = Collection.path collection
+        { path = Collection.getPath collection
         , id = id
         }
         |> encode
@@ -191,43 +189,39 @@ The Saving state is initiated by Javascript and set on the item in Sub.processCh
 processQueue : (Encode.Value -> Cmd msg) -> Collection a -> ( Cmd msg, Collection a )
 processQueue toFirestore collection =
     let
+        writeQueue =
+            Collection.getWriteQueue collection
+
         cmds =
-            collection.writeQueue
-                |> Set.toList
-                |> List.filterMap
-                    (\id ->
-                        case Dict.get id collection.items of
-                            Just (DbItem New item) ->
-                                Just <|
-                                    createDocument
-                                        { toFirestore = toFirestore
-                                        , collection = collection
-                                        , id = Id id
-                                        , data = item
-                                        }
+            writeQueue
+                |> List.map
+                    (\( id, dbItem ) ->
+                        case dbItem of
+                            DbItem New item ->
+                                createDocument
+                                    { toFirestore = toFirestore
+                                    , collection = collection
+                                    , id = Id id
+                                    , data = item
+                                    }
 
-                            Just (DbItem Modified item) ->
-                                Just <|
-                                    updateDocument
-                                        { toFirestore = toFirestore
-                                        , collection = collection
-                                        , id = id
-                                        , data = item
-                                        }
+                            DbItem Modified item ->
+                                updateDocument
+                                    { toFirestore = toFirestore
+                                    , collection = collection
+                                    , id = id
+                                    , data = item
+                                    }
 
-                            Just (DbItem Deleting _) ->
-                                Just <|
-                                    deleteDocument
-                                        { toFirestore = toFirestore
-                                        , collection = collection
-                                        , id = id
-                                        }
+                            DbItem Deleting _ ->
+                                deleteDocument
+                                    { toFirestore = toFirestore
+                                    , collection = collection
+                                    , id = id
+                                    }
 
-                            Just _ ->
-                                Nothing
-
-                            Nothing ->
-                                Nothing
+                            _ ->
+                                Cmd.none
                     )
                 |> Cmd.batch
     in
@@ -243,7 +237,7 @@ processQueue toFirestore collection =
        TODO Optimize the other functions in this module where extensible records
        are being needlessly modified. (Breaks Html.Lazy)
     -}
-    if Set.isEmpty collection.writeQueue then
+    if List.isEmpty writeQueue then
         ( Cmd.none, collection )
 
     else

@@ -1,115 +1,91 @@
 module Firestore.Collection exposing (..)
 
 import Dict exposing (Dict)
-import Firestore.Document as Document exposing (State(..))
-import Firestore.Internal exposing (Item(..))
+import Firestore.Document as Document
+import Firestore.Internal exposing (Collection(..), Path)
+import Firestore.State exposing (Item(..), State(..))
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Set exposing (Set)
 
 
-type alias Comparator a =
-    a -> a -> Basics.Order
-
-
+{-| -}
 type alias Collection a =
-    -- TODO Make opaque type
-    --
-    -- Collection is used to represents lists of things stored in Firebase.
-    -- Examples of Collections are:
-    --
-    --      /users/{accountId}/notes
-    --      /users/{accountId}/people
-    --
-    -- Each Collection's items are named by ID and have a .id field. So, for
-    -- example, the item at
-    --
-    --      /users/{accountId}/notes/123456
-    --
-    -- Has the property of (.id == 123456).
-    --
-    -- Collections have the responsibility of tracking which of their items
-    -- needs to be written back to Firestore. When you call Collection.update
-    -- on a given Collection, that Collection will update the item being
-    -- updated as needing saved. Then, next time you call preparePortWrites,
-    -- you will get a list of DocumentOperation writes that correspond to those
-    -- updates and a Collection with items indicating they're being saved.
-    --
-    { path : Path
-    , items : Dict Document.Id (Item a)
-    , writeQueue : Set Document.Id
-    , decoder : Decode.Decoder a
-    , encoder : a -> Encode.Value
-    , comparator : Comparator a
-    }
+    Collection a
 
 
+{-| -}
+type alias Comparator a =
+    Comparator a
+
+
+{-| -}
 type alias Path =
-    String
+    Path
 
 
+{-| -}
 empty :
     (a -> Encode.Value)
     -> Decode.Decoder a
     -> Comparator a
     -> Collection a
 empty encoder decoder comparator =
-    { path = ""
-    , items = Dict.empty
-    , writeQueue = Set.empty
-    , decoder = decoder
-    , encoder = encoder
-    , comparator = comparator
-    }
+    Collection
+        { path = ""
+        , items = Dict.empty
+        , writeQueue = Set.empty
+        , decoder = decoder
+        , encoder = encoder
+        , comparator = comparator
+        }
 
 
-path : Collection a -> String
-path collection =
+{-| TODO path or getPath?
+-}
+getPath : Collection a -> String
+getPath (Collection collection) =
     collection.path
 
 
+getWriteQueue : Collection a -> List ( Document.Id, Item a )
+getWriteQueue (Collection collection) =
+    collection.writeQueue
+        |> Set.toList
+        |> List.map
+            (\docId ->
+                Dict.get docId collection.items
+                    |> Maybe.map (Tuple.pair docId)
+            )
+        |> List.filterMap identity
+
+
+{-| -}
+toList : Collection a -> List ( Document.Id, Item a )
+toList (Collection { items }) =
+    Dict.toList items
+
+
+{-| -}
 encodeItem : Collection a -> a -> Encode.Value
-encodeItem collection =
+encodeItem (Collection collection) =
     collection.encoder
 
 
+{-| -}
 updatePath : Path -> Collection a -> Collection a
-updatePath newPath collection =
-    { collection | path = newPath }
+updatePath newPath (Collection collection) =
+    Collection { collection | path = newPath }
 
 
+{-| -}
 get : Document.Id -> Collection a -> Maybe a
 get id collection =
-    case Dict.get id collection.items of
-        Just item ->
-            case item of
-                DbItem Deleted _ ->
-                    -- Don't return _deleted_ items.
-                    Nothing
-
-                DbItem _ a ->
-                    Just a
-
-        Nothing ->
-            Nothing
+    getWithState id collection
+        |> Maybe.map (\DbItem _ a -> a)
 
 
-getWithState : Document.Id -> Collection a -> Maybe ( State, a )
-getWithState id collection =
-    case Dict.get id collection.items of
-        Just item ->
-            case item of
-                DbItem Deleted _ ->
-                    -- Don't return _deleted_ items.
-                    Nothing
-
-                DbItem state a ->
-                    Just ( state, a )
-
-        Nothing ->
-            Nothing
-
-
+{-| -}
 filter : (a -> Bool) -> Collection a -> List a
 filter fn collection =
     collection
@@ -123,11 +99,14 @@ filter fn collection =
             )
 
 
+{-| TODO How opinionated should we be.
+Expose functions which also allow you to access all items?
+-}
 filterMap : (a -> Maybe b) -> Collection a -> List b
 filterMap fn collection =
     let
-        filterFn_ item =
-            case item of
+        filterFn dbItem =
+            case dbItem of
                 DbItem Deleted _ ->
                     -- Don't return _deleted_ items.
                     Nothing
@@ -143,30 +122,21 @@ filterMap fn collection =
                 DbItem _ a ->
                     fn a
     in
-    collection.items
-        |> Dict.map (\_ v -> filterFn_ v)
-        |> Dict.values
-        |> List.filterMap (\item -> item)
+    collection
+        |> toList
+        |> List.filterMap (\( _, dbItem ) -> filterFn dbItem)
 
 
-foldl : (a -> b -> b) -> b -> Collection a -> b
-foldl reducer =
-    foldlWithId (\_ -> reducer)
-
-
-foldlWithId : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
-foldlWithId reducer initial collection =
+{-| -}
+foldl : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
+foldl reducer initial (Collection collection) =
     collection.items
         |> Dict.foldl (reducerHelper reducer) initial
 
 
-foldr : (a -> b -> b) -> b -> Collection a -> b
-foldr reducer =
-    foldrWithId (\_ -> reducer)
-
-
-foldrWithId : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
-foldrWithId reducer initial collection =
+{-| -}
+foldr : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
+foldr reducer initial (Collection collection) =
     collection.items
         |> Dict.foldr (reducerHelper reducer) initial
 
@@ -177,31 +147,33 @@ foldrWithId reducer initial collection =
 -- e.g   foldlAll : (id -> state -> item -> accum) -> id -> Collection item -> accum
 
 
-reducerHelper : (Document.Id -> a -> b -> b) -> Document.Id -> Item a -> b -> b
-reducerHelper reducer id item accum =
+reducerHelper : (Document.Id -> a -> b -> b) -> Document.Id -> ( State, a ) -> b -> b
+reducerHelper reducer id ( state, item ) accum =
     -- TODO Revise how opinionated we should be here
-    case item of
-        DbItem Deleted _ ->
+    case state of
+        Deleted ->
             -- Don't fold over _deleted_ items.
             accum
 
-        DbItem Deleting _ ->
+        Deleting ->
             -- Don't fold over items being deleted.
             accum
 
-        DbItem New _ ->
+        New ->
             -- Don't return items new, unsaved items in a "query".
             accum
 
-        DbItem _ a ->
-            reducer id a accum
+        _ ->
+            reducer id item accum
 
 
+{-| -}
 mapWithId : (Document.Id -> a -> b) -> Collection a -> List b
 mapWithId fn =
-    foldrWithId (\id item accum -> fn id item :: accum) []
+    foldr (\id item accum -> fn id item :: accum) []
 
 
+{-| -}
 sortBy : (a -> comparable) -> Collection a -> List a
 sortBy sorter collection =
     let
@@ -222,34 +194,35 @@ sortBy sorter collection =
                 DbItem _ a ->
                     Just a
     in
-    collection.items
-        |> Dict.values
-        |> List.filterMap extractor
+    filterMap extractor collection
         |> List.sortBy sorter
 
 
+{-| -}
 insert : Document.Id -> a -> Collection a -> Collection a
-insert id item collection =
-    { collection
-        | items = Dict.insert id (DbItem New item) collection.items
-        , writeQueue = Set.insert id collection.writeQueue
-    }
+insert id item (Collection collection) =
+    Collection
+        { collection
+            | items = Dict.insert id (DbItem New item) collection.items
+            , writeQueue = Set.insert id collection.writeQueue
+        }
 
 
+{-| -}
 insertTransient : Document.Id -> a -> Collection a -> Collection a
-insertTransient id item collection =
-    { collection
-        | items = Dict.insert id (DbItem New item) collection.items
-    }
+insertTransient id item (Collection collection) =
+    Collection
+        { collection
+            | items = Dict.insert id (DbItem New item) collection.items
+        }
 
 
 {-| Note: An item is only added to the Collection.writeQueue if it actually changed.
 This prevents potential infinite update loops.
 -}
 update : Document.Id -> (a -> a) -> Collection a -> Collection a
-update id fn collection =
+update id fn (Collection collection) =
     let
-        updateIfChanged : a -> Maybe (Collection a)
         updateIfChanged item =
             let
                 updatedItem =
@@ -284,14 +257,15 @@ update id fn collection =
                         Nothing
            )
         -- Return the same collection if nothing changed; plays nice with Html.lazy
-        |> Maybe.withDefault collection
+        |> Maybe.map Collection
+        |> Maybe.withDefault (Collection collection)
 
 
 {-| Use if you don't want to immediately delete something off the server,
 and you want to batch your updates/deletes with `Firestore.Cmd.processQueue`.
 -}
 remove : Document.Id -> Collection a -> Collection a
-remove id collection =
+remove id (Collection collection) =
     let
         delFn mItem =
             case mItem of
@@ -306,7 +280,31 @@ remove id collection =
                 Nothing ->
                     Nothing
     in
-    { collection
-        | items = Dict.update id delFn collection.items
-        , writeQueue = Set.insert id collection.writeQueue
-    }
+    Collection
+        { collection
+            | items = Dict.update id delFn collection.items
+            , writeQueue = Set.insert id collection.writeQueue
+        }
+
+
+
+-- Lower Level
+--
+-- Functions which allow you to operate on state,
+-- and don't have opinions on how Deleted/Deleting items are handled.
+
+
+{-| TODO How opinionated should we be.
+Expose functions which also allow you to access all items?
+-}
+getWithState : Document.Id -> Collection a -> Maybe (Item a)
+getWithState id (Collection collection) =
+    case Dict.get id collection.items of
+        Just (DbItem Deleted _) ->
+            Nothing
+
+        Just item ->
+            item
+
+        Nothing ->
+            Nothing
