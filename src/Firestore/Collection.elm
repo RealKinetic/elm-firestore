@@ -63,7 +63,10 @@ getWriteQueue (Collection collection) =
 {-| -}
 toList : Collection a -> List ( Document.Id, Item a )
 toList (Collection { items }) =
-    Dict.toList items
+    Dict.foldr
+        (\docId (DbItem _ doc) accum -> ( docId, doc ) :: accum)
+        []
+        items
 
 
 {-| -}
@@ -81,75 +84,70 @@ updatePath newPath (Collection collection) =
 {-| -}
 get : Document.Id -> Collection a -> Maybe a
 get id collection =
-    getWithState id collection
-        |> Maybe.map (\DbItem _ a -> a)
-
-
-{-| -}
-filter : (a -> Bool) -> Collection a -> List a
-filter fn collection =
     collection
-        |> filterMap
-            (\item ->
-                if fn item then
-                    Just item
+        |> getWithState id
+        |> Maybe.andThen
+            (\DbItem state a ->
+                case state of
+                    Deleted ->
+                        Nothing
 
-                else
-                    Nothing
+                    _ ->
+                        Just a
             )
 
 
-{-| TODO How opinionated should we be.
-Expose functions which also allow you to access all items?
--}
-filterMap : (a -> Maybe b) -> Collection a -> List b
-filterMap fn collection =
+{-| -}
+filter : (Document.Id -> a -> Bool) -> Collection a -> List a
+filter fn =
+    filterMap
+        (\docId item ->
+            if fn docId item then
+                Just item
+
+            else
+                Nothing
+        )
+
+
+{-| -}
+filterMap : (Document.Id -> a -> Maybe b) -> Collection a -> List b
+filterMap filterFn =
     let
-        filterFn dbItem =
-            case dbItem of
-                DbItem Deleted _ ->
+        filterFn_ docId state doc =
+            case state of
+                Deleted ->
                     -- Don't return _deleted_ items.
                     Nothing
 
-                DbItem Deleting _ ->
+                Deleting ->
                     -- Don't return items being deleted.
                     Nothing
 
-                DbItem New _ ->
+                New ->
                     -- Don't return items new, unsaved items in a "query".
                     Nothing
 
-                DbItem _ a ->
-                    fn a
+                _ ->
+                    filterFn docId doc
     in
-    collection
-        |> toList
-        |> List.filterMap (\( _, dbItem ) -> filterFn dbItem)
+    filterMapWithState filterFn_
 
 
 {-| -}
 foldl : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
-foldl reducer initial (Collection collection) =
-    collection.items
-        |> Dict.foldl (reducerHelper reducer) initial
+foldl reducer =
+    foldlWithState (reducerHelper reducer)
 
 
 {-| -}
 foldr : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
-foldr reducer initial (Collection collection) =
-    collection.items
-        |> Dict.foldr (reducerHelper reducer) initial
+foldr reducer =
+    foldrWithState (reducerHelper reducer)
 
 
-
--- TODO
--- Since it's a library we should add a foldlAll and foldrAll :
--- e.g   foldlAll : (id -> state -> item -> accum) -> id -> Collection item -> accum
-
-
-reducerHelper : (Document.Id -> a -> b -> b) -> Document.Id -> ( State, a ) -> b -> b
-reducerHelper reducer id ( state, item ) accum =
-    -- TODO Revise how opinionated we should be here
+reducerHelper : (Document.Id -> a -> b -> b) -> Document.Id -> State -> a -> b -> b
+reducerHelper reducer id state item accum =
     case state of
         Deleted ->
             -- Don't fold over _deleted_ items.
@@ -170,31 +168,13 @@ reducerHelper reducer id ( state, item ) accum =
 {-| -}
 mapWithId : (Document.Id -> a -> b) -> Collection a -> List b
 mapWithId fn =
-    foldr (\id item accum -> fn id item :: accum) []
+    mapWithState (\id _ doc -> fn id doc)
 
 
 {-| -}
 sortBy : (a -> comparable) -> Collection a -> List a
 sortBy sorter collection =
-    let
-        extractor item =
-            case item of
-                DbItem Deleted _ ->
-                    -- Don't return _deleted_ items.
-                    Nothing
-
-                DbItem Deleting _ ->
-                    -- Don't return items being deleted.
-                    Nothing
-
-                DbItem New _ ->
-                    -- Don't return items new, unsaved items in a "query".
-                    Nothing
-
-                DbItem _ a ->
-                    Just a
-    in
-    filterMap extractor collection
+    filterMap (\_ doc -> Just doc) collection
         |> List.sortBy sorter
 
 
@@ -219,6 +199,9 @@ insertTransient id item (Collection collection) =
 
 {-| Note: An item is only added to the Collection.writeQueue if it actually changed.
 This prevents potential infinite update loops.
+
+TODO revise this to see if we can't do a (Maybe a -> Maybe a) like Dict.update
+
 -}
 update : Document.Id -> (a -> a) -> Collection a -> Collection a
 update id fn (Collection collection) =
@@ -290,21 +273,87 @@ remove id (Collection collection) =
 
 -- Lower Level
 --
--- Functions which allow you to operate on state,
+-- Functions which allow you to operate on State,
 -- and don't have opinions on how Deleted/Deleting items are handled.
 
 
-{-| TODO How opinionated should we be.
-Expose functions which also allow you to access all items?
--}
+{-| -}
 getWithState : Document.Id -> Collection a -> Maybe (Item a)
 getWithState id (Collection collection) =
     case Dict.get id collection.items of
-        Just (DbItem Deleted _) ->
-            Nothing
-
         Just item ->
             item
 
         Nothing ->
             Nothing
+
+
+toListWithState : Collection a -> List ( Document.Id, Item a )
+toListWithState (Collection { items }) =
+    Dict.toList items
+
+
+{-| -}
+mapWithState : (Document.Id -> State -> a -> b) -> Collection a -> List b
+mapWithState fn =
+    foldrWithState (\id state doc accum -> fn id state doc :: accum) []
+
+
+{-| -}
+filterWithState : (Document.Id -> a -> Bool) -> Collection a -> List a
+filterWithState fn collection =
+    collection
+        |> filterMap
+            (\docId item ->
+                if fn docId item then
+                    Just item
+
+                else
+                    Nothing
+            )
+
+
+{-| Will NOT exlcude New/Deleted/Deleting like `Collection.filterMap`
+-}
+filterMapWithState : (Document.Id -> State -> a -> Maybe b) -> Collection a -> List b
+filterMapWithState filterFn collection =
+    collection
+        |> toList
+        |> List.filterMap
+            (\( docId, DbItem state doc ) ->
+                filterFn docId state doc
+            )
+
+
+{-| Will NOT exlcude New/Deleted/Deleting like `Collection.foldl`
+-}
+foldlWithState : (Document.Id -> State -> a -> b -> b) -> b -> Collection a -> b
+foldlWithState reducer initial (Collection collection) =
+    collection.items
+        |> Dict.foldl
+            (\id (DbItem state doc) accum ->
+                reducer id state doc accum
+            )
+            initial
+
+
+{-| Will NOT exlcude New/Deleted/Deleting like `Collection.foldr`
+-}
+foldrWithState : (Document.Id -> State -> a -> b -> b) -> b -> Collection a -> b
+foldrWithState reducer initial (Collection collection) =
+    collection.items
+        |> Dict.foldr
+            (\id (DbItem state doc) accum ->
+                reducer id state doc accum
+            )
+            initial
+
+
+{-| Will NOT exlcude New/Deleted/Deleting like `Collection.sortBy`
+-}
+sortByWithState : (State -> a -> comparable) -> Collection a -> List a
+sortByWithState sorter collection =
+    collection
+        |> toListWithState
+        |> List.sortBy (\( id, DbItem state doc ) -> sorter state doc)
+        |> List.map (\( _, DbItem _ doc ) -> doc)

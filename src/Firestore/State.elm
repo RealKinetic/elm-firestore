@@ -14,6 +14,14 @@ type State
     | Deleted
 
 
+
+-- TODO Alternative naming?
+-- type Stateful = DbItem
+-- type DbItem = DbItem
+--
+-- Remove it and just use a tuple (State, a)?
+
+
 type Item a
     = DbItem State a
 
