@@ -2,7 +2,7 @@ port module Main exposing (Model, main)
 
 import Browser
 import Dict
-import Firestore.Cmd exposing (Id(..))
+import Firestore.Cmd exposing (NewDocId(..))
 import Firestore.Collection as Collection exposing (Collection)
 import Firestore.Sub
 import Html exposing (Html)
@@ -22,7 +22,7 @@ main =
             \_ ->
                 Sub.batch
                     [ Time.every 1000 EverySecond
-                    , fromFirebase (Firestore.Sub.decodeMsg FirestoreMsg)
+                    , fromFirestore (Firestore.Sub.decode >> FirestoreMsg)
                     , userSignedIn SignedIn
                     ]
         }
@@ -126,15 +126,10 @@ update msg model =
         EverySecond time ->
             let
                 ( noteWrites, notes ) =
-                    Firestore.Cmd.preparePortWrites model.notes
-
-                noteWriteCmd =
-                    noteWrites
-                        |> List.map (Firestore.Cmd.encode >> toFirebase)
-                        |> Cmd.batch
+                    Firestore.Cmd.processQueue toFirestore model.notes
             in
             ( { model | currentTime = time, notes = notes }
-            , noteWriteCmd
+            , noteWrites
             )
 
         SignIn ->
@@ -144,27 +139,29 @@ update msg model =
 
         SignedIn userId ->
             let
-                notes =
+                updatedNotes =
                     Collection.updatePath
                         ("/accounts/" ++ userId ++ "/notes")
                         model.notes
 
                 watchNotes =
-                    Firestore.Cmd.watchCollection notes
-                        |> Firestore.Cmd.encode
-                        |> toFirebase
-
-                --Cmd.none
+                    Firestore.Cmd.watchCollection
+                        { toFirestore = toFirestore
+                        , collection = updatedNotes
+                        }
             in
-            ( { model | userId = Just userId, notes = notes }
+            ( { model | userId = Just userId, notes = updatedNotes }
             , watchNotes
             )
 
         NewNote newNote ->
             ( model
-            , Firestore.Cmd.createDocument model.notes True GenerateId newNote
-                |> Firestore.Cmd.encode
-                |> toFirebase
+            , Firestore.Cmd.createDocument
+                { toFirestore = toFirestore
+                , collection = model.notes
+                , id = Id "derpity"
+                , data = newNote
+                }
             )
 
         UpdateNote note ->
@@ -176,9 +173,12 @@ update msg model =
                         |> Maybe.withDefault "error"
             in
             ( model
-            , Firestore.Cmd.updateDocument model.notes id note
-                |> Firestore.Cmd.encode
-                |> toFirebase
+            , Firestore.Cmd.updateDocument
+                { toFirestore = toFirestore
+                , collection = model.notes
+                , id = id
+                , data = note
+                }
             )
 
         DeleteNote string ->
@@ -194,7 +194,7 @@ update msg model =
 handleFirestoreMsg : Model -> Firestore.Sub.Msg -> ( Model, Cmd Msg )
 handleFirestoreMsg model msg =
     case msg of
-        Firestore.Sub.DocCreated document ->
+        Firestore.Sub.DocumentCreated document ->
             if document.path == model.notes.path then
                 ( { model
                     | notes =
@@ -207,10 +207,13 @@ handleFirestoreMsg model msg =
             else
                 ( model, Cmd.none )
 
-        Firestore.Sub.DocUpdated document ->
+        Firestore.Sub.DocumentRead document ->
             ( model, Cmd.none )
 
-        Firestore.Sub.DocDeleted document ->
+        Firestore.Sub.DocumentUpdated document ->
+            ( model, Cmd.none )
+
+        Firestore.Sub.DocumentDeleted document ->
             -- TODO We should keep a Firestore.Model dict which tracks all this
             -- Dict Path (Collection a)
             ( if document.path == model.notes.path then
@@ -233,10 +236,10 @@ handleFirestoreMsg model msg =
 {- Ports -}
 
 
-port toFirebase : Encode.Value -> Cmd msg
+port toFirestore : Encode.Value -> Cmd msg
 
 
-port fromFirebase : (Decode.Value -> msg) -> Sub msg
+port fromFirestore : (Decode.Value -> msg) -> Sub msg
 
 
 port signInWithGoogle : Bool -> Cmd msg

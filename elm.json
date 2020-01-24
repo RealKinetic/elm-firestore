@@ -1,7 +1,7 @@
 {
     "type": "package",
-    "name": "realkinetic/elm-firebase",
-    "summary": "Serve Firebase applications using Elm",
+    "name": "realkinetic/elm-firestore",
+    "summary": "Interact with Google's Cloud Firestore using Elm",
     "license": "MIT",
     "version": "1.0.0",
     "exposed-modules": [
@@ -11,9 +11,7 @@
     "dependencies": {
         "NoRedInk/elm-json-decode-pipeline": "1.0.0 <= v < 2.0.0",
         "elm/core": "1.0.0 <= v < 2.0.0",
-        "elm/json": "1.0.0 <= v < 2.0.0",
-        "turboMaCk/any-dict": "2.1.0 <= v < 3.0.0",
-        "turboMaCk/any-set": "1.2.0 <= v < 2.0.0"
+        "elm/json": "1.0.0 <= v < 2.0.0"
     },
     "test-dependencies": {}
 }

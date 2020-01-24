@@ -11,8 +11,8 @@ e.g. /accounts or /accounts/{accountId}/notes
 Document paths have even number of slashes
 e.g. /accounts/{accountId}/notes/{noteId}
 
-TODO - Should be list of strings which we'll join with / ourselves
-Check list to make sure it's length is odd.
+TODO - Should be list of strings which we'll join with / ourselves?
+Check list to make sure it's length is odd?
 
 -}
 type alias Document =
@@ -58,7 +58,7 @@ type State
     | Cached
     | Saved
     | Saving
-    | Updated
+    | Modified
     | Deleting
     | Deleted
     | StateError
@@ -80,8 +80,8 @@ encodeState state =
             Saving ->
                 "saving"
 
-            Updated ->
-                "updated"
+            Modified ->
+                "modified"
 
             Deleting ->
                 "deleting"
@@ -112,8 +112,8 @@ decodeState =
                         "saving" ->
                             Saving
 
-                        "updated" ->
-                            Updated
+                        "modified" ->
+                            Modified
 
                         "deleting" ->
                             Deleting

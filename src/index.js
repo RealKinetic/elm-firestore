@@ -1,9 +1,9 @@
 
-exports.init = ({ firestore, portFromElm, portToElm, debug = false }) => {
+exports.init = ({ firestore, fromElm, toElm, debug = false }) => {
 
   let subNames = {
-    subscribe: "CollectionSubscription",
-    unsubscribe: "CollectionUnsubscription",
+    subscribeCollection: "SubscribeCollection",
+    unsubscribeCollection: "UnsubscribeCollection",
     create: "CreateDocument",
     read: "ReadDocument",
     update: "UpdateDocument",
@@ -21,7 +21,7 @@ exports.init = ({ firestore, portFromElm, portToElm, debug = false }) => {
   // "app" or "state"?
   let state = {
     firestore: firestore,
-    portToElm: portToElm,
+    toElm: toElm,
     collections: {},
     subNames: subNames,
     cmdNames: cmdNames,
@@ -34,17 +34,16 @@ exports.init = ({ firestore, portFromElm, portToElm, debug = false }) => {
     },
   };
 
-  portFromElm.subscribe(msg => {
-    console.log(state)
+  fromElm.subscribe(msg => {
     state.logger("new-msg", msg);
     try {
       switch (msg.name) {
-        case subNames.subscribe:
-          subscribeToCollection(state, msg.data);
+        case subNames.subscribeCollection:
+          subscribeCollection(state, msg.data);
           break;
 
-        case subNames.unsubscribe:
-          unsubscribeFromCollection(state, msg.data);
+        case subNames.unsubscribeCollection:
+          unsubscribeCollection(state, msg.data);
           break;
 
         case subNames.create:
@@ -68,30 +67,20 @@ exports.init = ({ firestore, portFromElm, portToElm, debug = false }) => {
           break;
       };
     } catch (err) {
-      console.error(err) // TODO Send error to elm with portToElm
+      console.error(err) // TODO Send error to elm with toElm
     };
   });
 }
 
 
-const subscribeToCollection = (state, collectionPath) => {
+const subscribeCollection = (state, collectionPath) => {
   let unsubscribeFunction = state
     .firestore
     .collection(collectionPath)
     .onSnapshot({ includeMetadataChanges: true },
       snapshot => {
-        // TODO We Could see about mapping over the docChanges
-        // and sending them in batches.
-        // We could (List -> Collection) then Collection.union'ing them.
-        // Would get rid of a bunch of processPortUpdate and updateIfChanged
-
         snapshot
           .docChanges({ includeMetadataChanges: true }).forEach(change => {
-            // We want "added" to flow into Elm as Updated events, not as
-            // Created events. Reason: the Elm program is set up so it auto
-            // redirects to the newly created document. This allows for
-            // synchronous Event creation.
-            // TODO - ^^ How we can support this in the library? ^^
             let docState, docData, cmdName;
 
             if (change.type === "modified" || change.type === "added") {
@@ -99,7 +88,7 @@ const subscribeToCollection = (state, collectionPath) => {
               docData = change.doc.data();
               cmdName = state.cmdNames.updated;
             } else if (change.type === "removed") {
-              docState = change.doc.metadata.hasPendingWrites ? "deleting" : "deleted";
+              docState = "deleted"; // No hasPendingWrites for deleted items.
               docData = change.doc.data();
               cmdName = state.cmdNames.deleted;
             } else {
@@ -115,7 +104,7 @@ const subscribeToCollection = (state, collectionPath) => {
               docState: docState,
             });
 
-            state.portToElm.send({
+            state.toElm.send({
               operation: cmdName,
               path: collectionPath,
               id: change.doc.id,
@@ -139,7 +128,7 @@ const subscribeToCollection = (state, collectionPath) => {
     }
 };
 
-const unsubscribeFromCollection = (state, collectionPath) => {
+const unsubscribeCollection = (state, collectionPath) => {
   let collectionState = state.collections[collectionPath];
 
   if (collectionState && typeof collectionState.unsubscribe === "function") {
@@ -155,27 +144,29 @@ const createDocument = (state, document) => {
 
   if (document.id === "") {
     doc = collection.doc(); // Generate a unique ID
-    document.id = doc.id;
   } else {
     doc = collection.doc(document.id);
   }
+
+  // Persisted documents will skip "new" and go straight to "saving".
+  let initialState = doc.createOnSave ? "saving" : "new";
 
   state.logger("document-created", {
     collectionPath: document.path,
     docId: document.id,
     docData: document.data,
-    docState: "new",
+    docState: initialState,
   });
 
-  state.portToElm.send({
+  state.toElm.send({
     operation: state.cmdNames.created,
     path: document.path,
-    id: document.id,
+    id: doc.id,
     data: document.data,
-    state: "new",
+    state: initialState,
   });
 
-  // If createOnSave, then save and update Elm.
+  // If createOnSave, then persist to Firestore and update Elm.
   if (!document.createOnSave) {
     return;
   }
@@ -187,15 +178,15 @@ const createDocument = (state, document) => {
       if (!state.isWatching(document.path)) {
         state.logger("document-created", {
           collectionPath: document.path,
-          docId: document.id,
+          docId: doc.id,
           docData: document.data,
           docState: "saved",
         });
 
-        state.portToElm.send({
-          operation: state.cmdNames.updated, // TODO or "Created"?
+        state.toElm.send({
+          operation: state.cmdNames.updated,
           path: document.path,
-          id: document.id,
+          id: doc.id,
           data: document.data,
           state: "saved",
         });
@@ -222,7 +213,7 @@ const readDocument = (state, document) => {
         docState: "saved",
       });
 
-      state.portToElm.send({
+      state.toElm.send({
         operation: state.cmdNames.read,
         path: document.path,
         id: document.id,
@@ -238,11 +229,27 @@ const readDocument = (state, document) => {
 
 // Update Document
 const updateDocument = (state, document) => {
+
+  state.logger("document-updated", {
+    collectionPath: document.path,
+    docId: document.id,
+    docData: document.data,
+    docState: "saving",
+  });
+
+  state.toElm.send({
+    operation: state.cmdNames.updated,
+    path: document.path,
+    id: doc.id,
+    data: document.data,
+    state: "saving",
+  });
+
   state
     .firestore
     .collection(document.path)
     .doc(document.id)
-    .update(document.data)
+    .set(document.data) // TODO set or update?
     .then(() => {
       // Send Msg to elm if collection is NOT already being watched.
       if (!state.isWatching(document.path)) {
@@ -253,7 +260,7 @@ const updateDocument = (state, document) => {
           docState: "saved",
         });
 
-        state.portToElm.send({
+        state.toElm.send({
           operation: state.cmdNames.updated,
           path: document.path,
           id: document.id,
@@ -270,6 +277,22 @@ const updateDocument = (state, document) => {
 
 // Delete Document
 const deleteDocument = (state, document) => {
+
+    state.logger("document-deleted", {
+      collectionPath: document.path,
+      docId: document.id,
+      docData: document.data,
+      docState: "deleting",
+    });
+
+    state.toElm.send({
+      operation: state.cmdNames.updated,
+      path: document.path,
+      id: document.id,
+      data: document.data,
+      state: "deleting",
+    });
+
   state
     .firestore
     .collection(document.path)
@@ -282,10 +305,10 @@ const deleteDocument = (state, document) => {
           collectionPath: document.path,
           docId: document.id,
           docData: document.data,
-          docState: "saved",
+          docState: "deleted",
         });
 
-        state.portToElm.send({
+        state.toElm.send({
           operation: state.cmdNames.deleted,
           path: document.path,
           id: document.id,

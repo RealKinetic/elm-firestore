@@ -1,40 +1,73 @@
 module Firestore.Cmd exposing
-    ( Id(..)
-    , Msg
+    ( Msg
+    , NewDocId(..)
     , createDocument
+    , createTransientDocument
     , encode
-    , preparePortWrites
+    , processQueue
     , updateDocument
     , watchCollection
     )
 
 import Dict
-import Firestore.Collection exposing (Collection, Item(..))
+import Firestore.Collection as Collection exposing (Collection)
 import Firestore.Document exposing (Document, Path, State(..))
+import Firestore.Internal exposing (Item(..))
 import Json.Encode as Encode
 import Set
 
 
 type Msg
-    = CollectionSubscription String
+    = SubscribeCollection String
+    | UnsubscribeCollection String
     | CreateDocument Bool Document
     | GetDocument Path
     | UpdateDocument Document
     | DeleteDocument Path
 
 
-watchCollection : Collection a -> Msg
-watchCollection { path } =
-    CollectionSubscription path
+watchCollection :
+    { toFirestore : Encode.Value -> Cmd msg
+    , collection : Collection a
+    }
+    -> Cmd msg
+watchCollection { toFirestore, collection } =
+    SubscribeCollection (Collection.path collection)
+        |> encode
+        |> toFirestore
 
 
-type Id
+type NewDocId
     = GenerateId
     | Id String
 
 
-createDocument : Collection a -> Bool -> Id -> a -> Msg
-createDocument { path, encoder } createOnSave id data =
+{-| Useful for generating documents with unique ID's,
+and/or responding to a `DocumentCreated`.
+
+Otherwise use `Collection.insert` with the `batchProcess` pattern.
+
+-}
+createDocument =
+    createDocument_ True
+
+
+{-| Create a document without immediately persisting to Firestore
+-}
+createTransientDocument =
+    createDocument_ False
+
+
+createDocument_ :
+    Bool
+    ->
+        { toFirestore : Encode.Value -> Cmd msg
+        , collection : Collection a
+        , id : NewDocId
+        , data : a
+        }
+    -> Cmd msg
+createDocument_ persist { toFirestore, collection, id, data } =
     let
         id_ =
             case id of
@@ -44,22 +77,32 @@ createDocument { path, encoder } createOnSave id data =
                 Id string ->
                     string
     in
-    CreateDocument createOnSave
-        { path = path
+    CreateDocument persist
+        { path = Collection.path collection
         , id = id_
         , state = New
-        , data = encoder data
+        , data = Collection.encodeItem collection data
         }
+        |> encode
+        |> toFirestore
 
 
-updateDocument : Collection a -> String -> a -> Msg
-updateDocument { path, encoder } id updatedDoc =
+updateDocument :
+    { toFirestore : Encode.Value -> Cmd msg
+    , collection : Collection a
+    , id : String
+    , data : a
+    }
+    -> Cmd msg
+updateDocument { toFirestore, collection, id, data } =
     UpdateDocument
-        { path = path
+        { path = Collection.path collection
         , id = id
-        , state = Updated
-        , data = encoder updatedDoc
+        , state = Modified
+        , data = Collection.encodeItem collection data
         }
+        |> encode
+        |> toFirestore
 
 
 encode : Msg -> Encode.Value
@@ -73,8 +116,13 @@ encode op =
     in
     helper <|
         case op of
-            CollectionSubscription path ->
-                { name = "CollectionSubscription"
+            SubscribeCollection path ->
+                { name = "SubscribeCollection"
+                , data = Encode.string path
+                }
+
+            UnsubscribeCollection path ->
+                { name = "UnsubscribeCollection"
                 , data = Encode.string path
                 }
 
@@ -118,22 +166,25 @@ encode op =
                 }
 
 
-preparePortWrites : Collection a -> ( List Msg, Collection a )
-preparePortWrites collection =
+{-| This persists all entities which have been Collection.update
+-}
+processQueue : (Encode.Value -> Cmd msg) -> Collection a -> ( Cmd msg, Collection a )
+processQueue toFirestore collection =
     let
         writes =
-            collection.needsWritten
+            collection.writeQueue
                 |> Set.toList
                 |> List.filterMap
                     (\id ->
                         case Dict.get id collection.items of
-                            Just (DbItem New item) ->
-                                Just <|
-                                    createDocument collection True (Id id) item
-
-                            Just (DbItem Updated item) ->
-                                Just <|
-                                    updateDocument collection id item
+                            Just (DbItem Modified item) ->
+                                updateDocument
+                                    { toFirestore = toFirestore
+                                    , collection = collection
+                                    , id = id
+                                    , data = item
+                                    }
+                                    |> Just
 
                             Just _ ->
                                 Nothing
@@ -141,17 +192,18 @@ preparePortWrites collection =
                             Nothing ->
                                 Nothing
                     )
+                |> Cmd.batch
 
         updateState mItem =
             case mItem of
-                Just (DbItem Updated a) ->
+                Just (DbItem Modified a) ->
                     Just (DbItem Saving a)
 
                 _ ->
                     mItem
 
         updatedItems =
-            collection.needsWritten
+            collection.writeQueue
                 |> Set.foldl
                     (\key -> Dict.update key updateState)
                     collection.items
@@ -168,13 +220,15 @@ preparePortWrites collection =
        TODO Optimize the other functions in this module where extensible records
        are being needlessly modified. (Breaks Html.Lazy)
     -}
-    if Set.isEmpty collection.needsWritten then
-        ( writes, collection )
+    if Set.isEmpty collection.writeQueue then
+        ( writes
+        , collection
+        )
 
     else
         ( writes
         , { collection
             | items = updatedItems
-            , needsWritten = Set.empty
+            , writeQueue = Set.empty
           }
         )

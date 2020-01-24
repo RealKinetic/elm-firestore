@@ -1,7 +1,7 @@
 {
-  "name": "@realkinetic/elm-firebase",
+  "name": "@realkinetic/elm-firestore",
   "version": "1.0.0",
-  "description": "Serve Firebase applications using Elm",
+  "description": "Interact with Google's Cloud Firestore using Elm",
   "main": "index.js",
   "repository": "git@github.com:RealKinetic/elm-firebase.git",
   "contributors": [ "Coury Ditch", "Alex Campbell", "Robert Kluin" ],

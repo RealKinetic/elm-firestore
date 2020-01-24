@@ -1,7 +1,7 @@
 import * as firebase from "firebase/app";
 import "firebase/auth";
 import "firebase/firestore";
-import * as elmFirebase from "../src/index";
+import * as elmFirestore from "../src/index";
 import { Elm } from './src/Main.elm';
 import { firebaseConfig } from "./firebaseConfig";
 
@@ -21,18 +21,12 @@ firebase.auth().useDeviceLanguage();
 let elmApp = Elm.Main.init();
 
 // Connect Elm + Firestore
-elmFirebase.init({
+elmFirestore.init({
   firestore,
-  portFromElm: elmApp.ports.toFirebase,
-  portToElm: elmApp.ports.fromFirebase,
+  fromElm: elmApp.ports.toFirestore,
+  toElm: elmApp.ports.fromFirestore,
   debug: true
 });
-
-/**
- *
- * User Sign-in
- *
- */
 
 firebase.auth().onAuthStateChanged(user => {
   if (user) {

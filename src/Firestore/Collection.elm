@@ -2,13 +2,10 @@ module Firestore.Collection exposing (..)
 
 import Dict exposing (Dict)
 import Firestore.Document exposing (State(..))
+import Firestore.Internal exposing (Item(..))
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Set exposing (Set)
-
-
-type Item a
-    = DbItem State a
 
 
 type alias Comparator a =
@@ -40,7 +37,8 @@ type alias Collection a =
     --
     { path : String
     , items : Dict String (Item a)
-    , needsWritten : Set String
+    , writeQueue : Set String
+    , deleteQueue : Set String
     , decoder : Decode.Decoder a
     , encoder : a -> Encode.Value
     , comparator : Comparator a
@@ -55,11 +53,22 @@ empty :
 empty encoder decoder comparator =
     { path = ""
     , items = Dict.empty
-    , needsWritten = Set.empty
+    , writeQueue = Set.empty
+    , deleteQueue = Set.empty
     , decoder = decoder
     , encoder = encoder
     , comparator = comparator
     }
+
+
+path : Collection a -> String
+path collection =
+    collection.path
+
+
+encodeItem : Collection a -> a -> Encode.Value
+encodeItem collection =
+    collection.encoder
 
 
 updatePath : String -> Collection a -> Collection a
@@ -213,87 +222,78 @@ sortBy sorter collection =
 insert : String -> a -> Collection a -> Collection a
 insert id item collection =
     { collection
-        | items = Dict.insert id (DbItem New item) collection.items
+        | items = Dict.insert id (DbItem Saving item) collection.items
+        , writeQueue = Set.insert id collection.writeQueue
     }
 
 
-insertAndSave : String -> a -> Collection a -> Collection a
-insertAndSave id item collection =
+insertTransient : String -> a -> Collection a -> Collection a
+insertTransient id item collection =
     { collection
         | items = Dict.insert id (DbItem New item) collection.items
-        , needsWritten = Set.insert id collection.needsWritten
     }
 
 
+{-| Note: An item is only added to the Collection.writeQueue if it actually changed.
+This prevents potential infinite update loops.
+-}
 update : String -> (a -> a) -> Collection a -> Collection a
 update id fn collection =
     let
-        applyFn mItem =
-            case mItem of
-                Just (DbItem Deleted _) ->
-                    Nothing
-
-                Just (DbItem _ a) ->
-                    -- QUESTION: Should we update items being deleted?
-                    Just <| DbItem Updated (fn a)
-
-                Nothing ->
-                    Nothing
-    in
-    { collection
-        | items = Dict.update id applyFn collection.items
-        , needsWritten = Set.insert id collection.needsWritten
-    }
-
-
-updateIfChanged : String -> (a -> a) -> Collection a -> Collection a
-updateIfChanged id fn collection =
-    let
-        -- QUESTION: Should this just _be_ the update logic?
-        -- If the update actually changes the item, then mark it as updated.
-        apply : a -> ( Set String, Dict String (Item a) )
-        apply item =
+        updateIfChanged : a -> Maybe (Collection a)
+        updateIfChanged item =
             let
                 updatedItem =
                     fn item
             in
             if item == updatedItem then
-                ( collection.needsWritten
-                , collection.items
-                )
+                Nothing
 
             else
-                ( Set.insert id collection.needsWritten
-                , Dict.insert id (DbItem Updated updatedItem) collection.items
-                )
+                Just
+                    { collection
+                        | items = Dict.insert id (DbItem Modified updatedItem) collection.items
+                        , writeQueue = Set.insert id collection.writeQueue
 
-        ( needsWritten, items ) =
-            Dict.get id collection.items
-                |> (\mItem ->
-                        case mItem of
-                            Just (DbItem _ item) ->
-                                apply item
-
-                            Nothing ->
-                                ( collection.needsWritten
-                                , collection.items
-                                )
-                   )
+                        -- TODO Should we remove it from the deleteQueue as well.
+                        -- Foresee from very odd edgecase
+                    }
     in
-    { collection
-        | items = items
-        , needsWritten = needsWritten
-    }
+    Dict.get id collection.items
+        |> (\mItem ->
+                case mItem of
+                    Just (DbItem Deleted _) ->
+                        Just
+                            { collection
+                                | items = collection.items |> Dict.remove id
+                            }
+
+                    Just (DbItem Deleting _) ->
+                        Nothing
+
+                    Just (DbItem _ item) ->
+                        updateIfChanged item
+
+                    Nothing ->
+                        Nothing
+           )
+        -- Return the same collection if nothing changed; plays nice with Html.lazy
+        |> Maybe.withDefault collection
 
 
+{-| Use if you don't want to immediately delete something off the server,
+and you want to batch your updates/deletes with `Firestore.Cmd.processQueue`.
+-}
 remove : String -> Collection a -> Collection a
 remove id collection =
     let
         delFn mItem =
             case mItem of
+                -- Do not update Deleted -> Deleting
                 Just (DbItem Deleted a) ->
                     Just <| DbItem Deleted a
 
+                -- All other items will be marked Deleting
                 Just (DbItem _ a) ->
                     Just <| DbItem Deleting a
 
@@ -302,4 +302,6 @@ remove id collection =
     in
     { collection
         | items = Dict.update id delFn collection.items
+        , writeQueue = Set.remove id collection.writeQueue
+        , deleteQueue = Set.insert id collection.deleteQueue
     }

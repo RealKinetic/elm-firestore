@@ -1,26 +1,70 @@
 module Firestore.Sub exposing (..)
 
 import Dict exposing (Dict)
-import Firestore.Collection exposing (Collection, Item(..))
+import Firestore.Collection exposing (Collection)
 import Firestore.Document as Document exposing (Document, Path, State(..))
+import Firestore.Internal exposing (Item(..))
 import Json.Decode as Decode exposing (Decoder)
 
 
 type Msg
-    = DocCreated Document
-    | DocUpdated Document
-    | DocDeleted Document
-    | Error String
+    = DocumentCreated Document
+    | DocumentRead Document
+    | DocumentUpdated Document
+    | DocumentDeleted Document
+    | Error Error
 
 
-decodeMsg : (Msg -> msg) -> Decode.Value -> msg
-decodeMsg toMsg val =
+type ChangeType
+    = DocumentCreated_
+    | DocumentUpdated_
+    | DocumentRead_
+    | DocumentDeleted_
+
+
+type NewMsg
+    = Change ChangeType Document
+    | Error_
+
+
+bar : NewMsg -> ( String, Cmd msg )
+bar newMsg =
+    case newMsg of
+        Change changeType document ->
+            let
+                otherCmd =
+                    case changeType of
+                        DocumentCreated_ ->
+                            ( "e.g. change page if doc.path == notes", Cmd.none )
+
+                        DocumentUpdated_ ->
+                            ( "e.g. change page if doc.path == notes", Cmd.none )
+
+                        DocumentRead_ ->
+                            ( "e.g. change page if doc.path == notes", Cmd.none )
+
+                        DocumentDeleted_ ->
+                            ( "e.g. change page if doc.path == notes", Cmd.none )
+            in
+            ( "model", Cmd.none )
+
+        Error_ ->
+            ( "model", Cmd.none )
+
+
+type Error
+    = DecodeError String
+    | PlaceholderError String
+
+
+decode : Decode.Value -> Msg
+decode val =
     case Decode.decodeValue msgDecoder val of
         Ok msg ->
-            toMsg msg
+            msg
 
         Err error ->
-            toMsg <| Error (Decode.errorToString error)
+            Error <| DecodeError (Decode.errorToString error)
 
 
 msgDecoder : Decoder Msg
@@ -30,16 +74,20 @@ msgDecoder =
             (\opName ->
                 case opName of
                     "DocumentCreated" ->
-                        Decode.map DocCreated Document.decoder
+                        Decode.map DocumentCreated Document.decoder
+
+                    "DocumentRead" ->
+                        Decode.map DocumentRead Document.decoder
 
                     "DocumentUpdated" ->
-                        Decode.map DocUpdated Document.decoder
+                        Decode.map DocumentUpdated Document.decoder
 
                     "DocumentDeleted" ->
-                        Decode.map DocDeleted Document.decoder
+                        Decode.map DocumentDeleted Document.decoder
 
                     "Error" ->
-                        Decode.map Error (Decode.field "message" Decode.string)
+                        Decode.map (PlaceholderError >> Error)
+                            (Decode.field "message" Decode.string)
 
                     _ ->
                         Decode.fail ("unknown-operation: " ++ opName)
