@@ -1,4 +1,11 @@
-module Firestore.Sub exposing (..)
+module Firestore.Sub exposing
+    ( ChangeType(..)
+    , Error(..)
+    , Msg(..)
+    , decodeMsg
+    , msgDecoder
+    , processChange
+    )
 
 import Dict exposing (Dict)
 import Firestore.Collection exposing (Collection)
@@ -7,83 +14,41 @@ import Firestore.Internal exposing (Item(..))
 import Json.Decode as Decode exposing (Decoder)
 
 
+{-| -}
 type Msg
-    = DocumentCreated Document
-    | DocumentRead Document
-    | DocumentUpdated Document
-    | DocumentDeleted Document.Path
+    = Change ChangeType Document
+    | Read Document
     | Error Error
 
 
+{-| -}
+type ChangeType
+    = DocumentCreated
+    | DocumentUpdated
+    | DocumentDeleted
+
+
+{-| -}
 type Error
-    = DecodeError String
+    = DecodeError Decode.Error
     | PlaceholderError String
 
 
+{-| -}
+decodeMsg : Decode.Value -> Msg
+decodeMsg val =
+    case
+        Decode.decodeValue msgDecoder val
+            |> Result.mapError (DecodeError >> Error)
+    of
+        Ok changeMsg ->
+            changeMsg
 
-{-
-   New API
-
-   type ChangeType
-       = DocumentCreated
-       | DocumentUpdated
-       | DocumentRead
-       | DocumentDeleted
-
-
-   type Msg
-       = Change ChangeType Document
-
-   decode : Decode.Value -> Result Error Msg
-
-   userHandler : Result Error Msg -> Model -> ( Model, Cmd msg )
-   userHandler newMsg model =
-       case newMsg of
-           Ok (Change changeType document) ->
-               let
-                   someCmd =
-                       case changeType of
-                           DocumentCreated_ ->
-                               -- "e.g. change page if doc.path == notes"
-                               Cmd.none
-
-                           DocumentUpdated_ ->
-                               Cmd.none
-
-                           DocumentRead_ ->
-                               Cmd.none
-
-                           DocumentDeleted_ ->
-                               Cmd.none
-               in
-               ( if document.path == Collection.path model.notes then
-                   { model
-                       | notes = Sub.processChange model.notes changeType document
-                   }
-
-                 else
-                   model
-               , someCmd
-               )
-
-           Err (DecodeError err) ->
-               ( model, Cmd.none )
-
-           Err (PlaceholderError err) ->
-               ( model, Cmd.none )
--}
+        Err errorMsg ->
+            errorMsg
 
 
-decode : Decode.Value -> Msg
-decode val =
-    case Decode.decodeValue msgDecoder val of
-        Ok msg ->
-            msg
-
-        Err error ->
-            Error <| DecodeError (Decode.errorToString error)
-
-
+{-| -}
 msgDecoder : Decoder Msg
 msgDecoder =
     Decode.field "operation" Decode.string
@@ -91,16 +56,16 @@ msgDecoder =
             (\opName ->
                 case opName of
                     "DocumentCreated" ->
-                        Decode.map DocumentCreated Document.decoder
+                        Decode.map (Change DocumentCreated) Document.decoder
 
                     "DocumentRead" ->
-                        Decode.map DocumentRead Document.decoder
+                        Decode.map Read Document.decoder
 
                     "DocumentUpdated" ->
-                        Decode.map DocumentUpdated Document.decoder
+                        Decode.map (Change DocumentUpdated) Document.decoder
 
                     "DocumentDeleted" ->
-                        Decode.map DocumentDeleted Document.pathDecoder
+                        Decode.map (Change DocumentDeleted) Document.decoder
 
                     "Error" ->
                         Decode.map (PlaceholderError >> Error)
@@ -111,17 +76,42 @@ msgDecoder =
             )
 
 
-processPortUpdate :
-    Document
+{-| If doc path and collection path don't match,
+then the collection is returned unchanged.
+-}
+processChange :
+    ChangeType
+    -> Document
     -> Collection a
     -> Collection a
-processPortUpdate doc collection =
+processChange changeType doc collection =
+    if collection.path /= doc.path then
+        collection
+
+    else
+        processChangeHelper changeType doc collection
+
+
+processChangeHelper :
+    ChangeType
+    -> Document
+    -> Collection a
+    -> Collection a
+processChangeHelper changeType doc collection =
     let
         decoded : Maybe a
         decoded =
             doc.data
                 |> Decode.decodeValue collection.decoder
                 |> Result.toMaybe
+
+        updateUnlessDeleted : Item a -> Dict String (Item a)
+        updateUnlessDeleted item =
+            if doc.state == Deleted then
+                Dict.remove doc.id collection.items
+
+            else
+                Dict.insert doc.id item collection.items
 
         processUpdate : a -> Item a -> Dict String (Item a)
         processUpdate new (DbItem oldState oldItem) =
@@ -146,27 +136,23 @@ processPortUpdate doc collection =
                                 ( _, _ ) ->
                                     doc.state
                     in
-                    Dict.insert
-                        doc.id
-                        (DbItem state new)
-                        collection.items
+                    updateUnlessDeleted (DbItem state new)
 
                 Basics.GT ->
-                    -- Set state based on dbState
-                    Dict.insert
-                        doc.id
-                        (DbItem doc.state new)
-                        collection.items
+                    updateUnlessDeleted (DbItem doc.state new)
 
         updatedItems : Dict String (Item a)
         updatedItems =
             case decoded of
                 Just new ->
-                    case Dict.get doc.id collection.items of
-                        Just old ->
+                    case ( changeType, Dict.get doc.id collection.items ) of
+                        ( _, Just old ) ->
                             processUpdate new old
 
-                        Nothing ->
+                        ( DocumentDeleted, Nothing ) ->
+                            collection.items
+
+                        ( _, Nothing ) ->
                             Dict.insert
                                 doc.id
                                 (DbItem doc.state new)
@@ -174,27 +160,5 @@ processPortUpdate doc collection =
 
                 Nothing ->
                     collection.items
-    in
-    { collection | items = updatedItems }
-
-
-processPortDelete :
-    Document
-    -> Collection a
-    -> Collection a
-processPortDelete doc collection =
-    let
-        markDeleted =
-            Maybe.map
-                (\(DbItem _ a) -> DbItem Deleted a)
-
-        updatedItems =
-            case doc.state of
-                Deleted ->
-                    -- This was removed on the server.
-                    Dict.remove doc.id collection.items
-
-                _ ->
-                    Dict.update doc.id markDeleted collection.items
     in
     { collection | items = updatedItems }

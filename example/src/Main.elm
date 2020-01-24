@@ -4,6 +4,7 @@ import Browser
 import Dict
 import Firestore.Cmd exposing (NewDocId(..))
 import Firestore.Collection as Collection exposing (Collection)
+import Firestore.Document
 import Firestore.Sub
 import Html exposing (Html)
 import Html.Events exposing (onClick)
@@ -22,7 +23,7 @@ main =
             \_ ->
                 Sub.batch
                     [ Time.every 1000 EverySecond
-                    , fromFirestore (Firestore.Sub.decode >> FirestoreMsg)
+                    , fromFirestore (Firestore.Sub.decodeMsg >> FirestoreMsg)
                     , userSignedIn SignedIn
                     ]
         }
@@ -166,7 +167,7 @@ update msg model =
 
         UpdateNote note ->
             let
-                id =
+                anyOldIdWillDo =
                     model.notes.items
                         |> Dict.keys
                         |> List.head
@@ -176,7 +177,7 @@ update msg model =
             , Firestore.Cmd.updateDocument
                 { toFirestore = toFirestore
                 , collection = model.notes
-                , id = id
+                , id = anyOldIdWillDo
                 , data = note
                 }
             )
@@ -194,42 +195,23 @@ update msg model =
 handleFirestoreMsg : Model -> Firestore.Sub.Msg -> ( Model, Cmd Msg )
 handleFirestoreMsg model msg =
     case msg of
-        Firestore.Sub.DocumentCreated document ->
-            if document.path == model.notes.path then
-                ( { model
-                    | notes =
-                        model.notes
-                            |> Firestore.Sub.processPortUpdate document
-                  }
-                , Cmd.none
-                )
-
-            else
-                ( model, Cmd.none )
-
-        Firestore.Sub.DocumentRead document ->
-            ( model, Cmd.none )
-
-        Firestore.Sub.DocumentUpdated document ->
-            ( model, Cmd.none )
-
-        Firestore.Sub.DocumentDeleted document ->
-            -- TODO We should keep a Firestore.Model dict which tracks all this
-            -- Dict Path (Collection a)
-            ( if document.path == model.notes.path then
-                { model
-                    | notes =
-                        model.notes
-                            |> Firestore.Sub.processPortDelete document
-                }
-
-              else
-                model
-            , Cmd.none
+        Firestore.Sub.Change changeType document ->
+            ( { model
+                | notes = Firestore.Sub.processChange changeType document model.notes
+              }
+            , cmdFromChange changeType document
             )
+
+        Firestore.Sub.Read document ->
+            ( model, Cmd.none )
 
         Firestore.Sub.Error string ->
             ( model, Cmd.none )
+
+
+cmdFromChange : Firestore.Sub.ChangeType -> Firestore.Document.Document -> Cmd Msg
+cmdFromChange _ _ =
+    Cmd.none
 
 
 

@@ -2,8 +2,11 @@ module Firestore.Cmd exposing
     ( NewDocId(..)
     , createDocument
     , createTransientDocument
+    , deleteDocument
     , encode
     , processQueue
+    , readDocument
+    , unwatchCollection
     , updateDocument
     , watchCollection
     )
@@ -14,6 +17,10 @@ import Firestore.Document as Document exposing (State(..))
 import Firestore.Internal exposing (Item(..))
 import Json.Encode as Encode
 import Set
+
+
+
+-- Internal Helper Types
 
 
 type alias Document =
@@ -32,6 +39,10 @@ type Msg
     | DeleteDocument Document.Path
 
 
+
+-- Exposed bits
+
+
 {-| -}
 watchCollection :
     { toFirestore : Encode.Value -> Cmd msg
@@ -39,6 +50,18 @@ watchCollection :
     }
     -> Cmd msg
 watchCollection { toFirestore, collection } =
+    SubscribeCollection (Collection.path collection)
+        |> encode
+        |> toFirestore
+
+
+{-| -}
+unwatchCollection :
+    { toFirestore : Encode.Value -> Cmd msg
+    , collection : Collection a
+    }
+    -> Cmd msg
+unwatchCollection { toFirestore, collection } =
     SubscribeCollection (Collection.path collection)
         |> encode
         |> toFirestore
@@ -64,7 +87,7 @@ createDocument :
     }
     -> Cmd msg
 createDocument =
-    createDocument_ True
+    createDocumentHelper True
 
 
 {-| Create a document without immediately persisting to Firestore
@@ -77,10 +100,10 @@ createTransientDocument :
     }
     -> Cmd msg
 createTransientDocument =
-    createDocument_ False
+    createDocumentHelper False
 
 
-createDocument_ :
+createDocumentHelper :
     Bool
     ->
         { toFirestore : Encode.Value -> Cmd msg
@@ -89,7 +112,7 @@ createDocument_ :
         , data : a
         }
     -> Cmd msg
-createDocument_ persist { toFirestore, collection, id, data } =
+createDocumentHelper persist { toFirestore, collection, id, data } =
     let
         id_ =
             case id of
@@ -103,6 +126,23 @@ createDocument_ persist { toFirestore, collection, id, data } =
         { path = Collection.path collection
         , id = id_
         , data = Collection.encodeItem collection data
+        }
+        |> encode
+        |> toFirestore
+
+
+{-| TODO finish implementation
+-}
+readDocument :
+    { toFirestore : Encode.Value -> Cmd msg
+    , collection : Collection a
+    , id : String
+    }
+    -> Cmd msg
+readDocument { toFirestore, collection, id } =
+    ReadDocument
+        { path = Collection.path collection
+        , id = id
         }
         |> encode
         |> toFirestore
@@ -124,6 +164,94 @@ updateDocument { toFirestore, collection, id, data } =
         }
         |> encode
         |> toFirestore
+
+
+{-| -}
+deleteDocument :
+    { toFirestore : Encode.Value -> Cmd msg
+    , collection : Collection a
+    , id : String
+    }
+    -> Cmd msg
+deleteDocument { toFirestore, collection, id } =
+    DeleteDocument
+        { path = Collection.path collection
+        , id = id
+        }
+        |> encode
+        |> toFirestore
+
+
+{-| This persists all entities which have been added to the Collection.writeQueue
+via Collection.insert, Collection.insertTransient, Collection.update, and Collection.remove
+
+The Saving state is initiated by Javascript and set on the item in Sub.processChange
+
+-}
+processQueue : (Encode.Value -> Cmd msg) -> Collection a -> ( Cmd msg, Collection a )
+processQueue toFirestore collection =
+    let
+        cmds =
+            collection.writeQueue
+                |> Set.toList
+                |> List.filterMap
+                    (\id ->
+                        case Dict.get id collection.items of
+                            Just (DbItem New item) ->
+                                Just <|
+                                    createDocument
+                                        { toFirestore = toFirestore
+                                        , collection = collection
+                                        , id = Id id
+                                        , data = item
+                                        }
+
+                            Just (DbItem Modified item) ->
+                                Just <|
+                                    updateDocument
+                                        { toFirestore = toFirestore
+                                        , collection = collection
+                                        , id = id
+                                        , data = item
+                                        }
+
+                            Just (DbItem Deleting _) ->
+                                Just <|
+                                    deleteDocument
+                                        { toFirestore = toFirestore
+                                        , collection = collection
+                                        , id = id
+                                        }
+
+                            Just _ ->
+                                Nothing
+
+                            Nothing ->
+                                Nothing
+                    )
+                |> Cmd.batch
+    in
+    {-
+       Even if all the values in the collection record remain unchanged,
+       extensible record updates genereate a new javascript object under the hood.
+       This breaks strict equality, causing Html.lazy to needlessly compute.
+
+       e.g. If this function is run every second, all Html.lazy functions using
+       notes/persons will be recomputed every second, even if nothing changed
+       during the majority of those seconds.
+
+       TODO Optimize the other functions in this module where extensible records
+       are being needlessly modified. (Breaks Html.Lazy)
+    -}
+    if Set.isEmpty collection.writeQueue then
+        ( Cmd.none, collection )
+
+    else
+        ( cmds, { collection | writeQueue = Set.empty } )
+
+
+
+-- Internal
 
 
 encode : Msg -> Encode.Value
@@ -185,71 +313,3 @@ encode op =
                         , ( "id", Encode.string id )
                         ]
                 }
-
-
-{-| This persists all entities which have been Collection.update
--}
-processQueue : (Encode.Value -> Cmd msg) -> Collection a -> ( Cmd msg, Collection a )
-processQueue toFirestore collection =
-    let
-        writes =
-            collection.writeQueue
-                |> Set.toList
-                |> List.filterMap
-                    (\id ->
-                        case Dict.get id collection.items of
-                            Just (DbItem Modified item) ->
-                                updateDocument
-                                    { toFirestore = toFirestore
-                                    , collection = collection
-                                    , id = id
-                                    , data = item
-                                    }
-                                    |> Just
-
-                            Just _ ->
-                                Nothing
-
-                            Nothing ->
-                                Nothing
-                    )
-                |> Cmd.batch
-
-        updateState mItem =
-            case mItem of
-                Just (DbItem Modified a) ->
-                    Just (DbItem Saving a)
-
-                _ ->
-                    mItem
-
-        updatedItems =
-            collection.writeQueue
-                |> Set.foldl
-                    (\key -> Dict.update key updateState)
-                    collection.items
-    in
-    {-
-       Even if all the values in the collection record remain unchanged,
-       extensible record updates genereate a new javascript object under the hood.
-       This breaks strict equality, causing Html.lazy to needlessly compute.
-
-       e.g. If this function is run every second, all Html.lazy functions using
-       notes/persons will be recomputed every second, even if nothing changed
-       during the majority of those seconds.
-
-       TODO Optimize the other functions in this module where extensible records
-       are being needlessly modified. (Breaks Html.Lazy)
-    -}
-    if Set.isEmpty collection.writeQueue then
-        ( writes
-        , collection
-        )
-
-    else
-        ( writes
-        , { collection
-            | items = updatedItems
-            , writeQueue = Set.empty
-          }
-        )

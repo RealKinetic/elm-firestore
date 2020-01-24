@@ -89,7 +89,7 @@ const subscribeCollection = (state, collectionPath) => {
               cmdName = state.cmdNames.updated;
             } else if (change.type === "removed") {
               docState = "deleted"; // No hasPendingWrites for deleted items.
-              docData = change.doc.data();
+              docData = null;
               cmdName = state.cmdNames.deleted;
             } else {
               console.error("unknown doc change type", change.type);
@@ -280,7 +280,6 @@ const deleteDocument = (state, document) => {
     state.logger("document-deleted", {
       collectionPath: document.path,
       docId: document.id,
-      docData: document.data,
       docState: "deleting",
     });
 
@@ -288,6 +287,7 @@ const deleteDocument = (state, document) => {
       operation: state.cmdNames.updated,
       path: document.path,
       id: document.id,
+      data: null,
       state: "deleting",
     });
 
@@ -309,6 +309,7 @@ const deleteDocument = (state, document) => {
           operation: state.cmdNames.deleted,
           path: document.path,
           id: document.id,
+          data: null,
           state: "deleted",
         });
       };
