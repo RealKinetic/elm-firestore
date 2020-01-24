@@ -149,7 +149,7 @@ const createDocument = (state, document) => {
   }
 
   // Persisted documents will skip "new" and go straight to "saving".
-  let initialState = doc.createOnSave ? "saving" : "new";
+  let initialState = document.persist ? "saving" : "new";
 
   state.logger("document-created", {
     collectionPath: document.path,
@@ -166,8 +166,7 @@ const createDocument = (state, document) => {
     state: initialState,
   });
 
-  // If createOnSave, then persist to Firestore and update Elm.
-  if (!document.createOnSave) {
+  if (!document.persist) {
     return;
   }
 

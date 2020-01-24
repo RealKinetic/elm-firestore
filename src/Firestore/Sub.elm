@@ -15,46 +15,63 @@ type Msg
     | Error Error
 
 
-type ChangeType
-    = DocumentCreated_
-    | DocumentUpdated_
-    | DocumentRead_
-    | DocumentDeleted_
-
-
-type NewMsg
-    = Change ChangeType Document
-    | Error_
-
-
-bar : NewMsg -> ( String, Cmd msg )
-bar newMsg =
-    case newMsg of
-        Change changeType document ->
-            let
-                otherCmd =
-                    case changeType of
-                        DocumentCreated_ ->
-                            ( "e.g. change page if doc.path == notes", Cmd.none )
-
-                        DocumentUpdated_ ->
-                            ( "e.g. change page if doc.path == notes", Cmd.none )
-
-                        DocumentRead_ ->
-                            ( "e.g. change page if doc.path == notes", Cmd.none )
-
-                        DocumentDeleted_ ->
-                            ( "e.g. change page if doc.path == notes", Cmd.none )
-            in
-            ( "model", Cmd.none )
-
-        Error_ ->
-            ( "model", Cmd.none )
-
-
 type Error
     = DecodeError String
     | PlaceholderError String
+
+
+
+{-
+   New API
+
+   type ChangeType
+       = DocumentCreated
+       | DocumentUpdated
+       | DocumentRead
+       | DocumentDeleted
+
+
+   type Msg
+       = Change ChangeType Document
+
+   decode : Decode.Value -> Result Error Msg
+
+   userHandler : Result Error Msg -> Model -> ( Model, Cmd msg )
+   userHandler newMsg model =
+       case newMsg of
+           Ok (Change changeType document) ->
+               let
+                   someCmd =
+                       case changeType of
+                           DocumentCreated_ ->
+                               -- "e.g. change page if doc.path == notes"
+                               Cmd.none
+
+                           DocumentUpdated_ ->
+                               Cmd.none
+
+                           DocumentRead_ ->
+                               Cmd.none
+
+                           DocumentDeleted_ ->
+                               Cmd.none
+               in
+               ( if document.path == Collection.path model.notes then
+                   { model
+                       | notes = Sub.processChange model.notes changeType document
+                   }
+
+                 else
+                   model
+               , someCmd
+               )
+
+           Err (DecodeError err) ->
+               ( model, Cmd.none )
+
+           Err (PlaceholderError err) ->
+               ( model, Cmd.none )
+-}
 
 
 decode : Decode.Value -> Msg

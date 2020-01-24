@@ -126,14 +126,14 @@ encode op =
                 , data = Encode.string path
                 }
 
-            CreateDocument createOnSave { path, id, data } ->
+            CreateDocument persist { path, id, data } ->
                 { name = "CreateDocument"
                 , data =
                     Encode.object
                         [ ( "path", Encode.string path )
                         , ( "id", Encode.string id )
                         , ( "data", data )
-                        , ( "createOnSave", Encode.bool createOnSave )
+                        , ( "persist", Encode.bool persist )
                         ]
                 }
 
