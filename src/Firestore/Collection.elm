@@ -1,7 +1,7 @@
 module Firestore.Collection exposing (..)
 
 import Dict exposing (Dict)
-import Firestore.Document exposing (State(..))
+import Firestore.Document as Document exposing (State(..))
 import Firestore.Internal exposing (Item(..))
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -13,7 +13,7 @@ type alias Comparator a =
 
 
 type alias Collection a =
-    -- TODO Make opaque type?
+    -- TODO Make opaque type
     --
     -- Collection is used to represents lists of things stored in Firebase.
     -- Examples of Collections are:
@@ -35,14 +35,17 @@ type alias Collection a =
     -- you will get a list of DocumentOperation writes that correspond to those
     -- updates and a Collection with items indicating they're being saved.
     --
-    { path : String
-    , items : Dict String (Item a)
-    , writeQueue : Set String
-    , deleteQueue : Set String
+    { path : Path
+    , items : Dict Document.Id (Item a)
+    , writeQueue : Set Document.Id
     , decoder : Decode.Decoder a
     , encoder : a -> Encode.Value
     , comparator : Comparator a
     }
+
+
+type alias Path =
+    String
 
 
 empty :
@@ -54,7 +57,6 @@ empty encoder decoder comparator =
     { path = ""
     , items = Dict.empty
     , writeQueue = Set.empty
-    , deleteQueue = Set.empty
     , decoder = decoder
     , encoder = encoder
     , comparator = comparator
@@ -71,12 +73,12 @@ encodeItem collection =
     collection.encoder
 
 
-updatePath : String -> Collection a -> Collection a
+updatePath : Path -> Collection a -> Collection a
 updatePath newPath collection =
     { collection | path = newPath }
 
 
-get : String -> Collection a -> Maybe a
+get : Document.Id -> Collection a -> Maybe a
 get id collection =
     case Dict.get id collection.items of
         Just item ->
@@ -92,7 +94,7 @@ get id collection =
             Nothing
 
 
-getWithState : String -> Collection a -> Maybe ( State, a )
+getWithState : Document.Id -> Collection a -> Maybe ( State, a )
 getWithState id collection =
     case Dict.get id collection.items of
         Just item ->
@@ -152,7 +154,7 @@ foldl reducer =
     foldlWithId (\_ -> reducer)
 
 
-foldlWithId : (String -> a -> b -> b) -> b -> Collection a -> b
+foldlWithId : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
 foldlWithId reducer initial collection =
     collection.items
         |> Dict.foldl (reducerHelper reducer) initial
@@ -163,32 +165,39 @@ foldr reducer =
     foldrWithId (\_ -> reducer)
 
 
-foldrWithId : (String -> a -> b -> b) -> b -> Collection a -> b
+foldrWithId : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
 foldrWithId reducer initial collection =
     collection.items
         |> Dict.foldr (reducerHelper reducer) initial
 
 
-reducerHelper : (String -> a -> b -> b) -> String -> Item a -> b -> b
-reducerHelper reducer id item state =
+
+-- TODO
+-- Since it's a library we should add a foldlAll and foldrAll :
+-- e.g   foldlAll : (id -> state -> item -> accum) -> id -> Collection item -> accum
+
+
+reducerHelper : (Document.Id -> a -> b -> b) -> Document.Id -> Item a -> b -> b
+reducerHelper reducer id item accum =
+    -- TODO Revise how opinionated we should be here
     case item of
         DbItem Deleted _ ->
             -- Don't fold over _deleted_ items.
-            state
+            accum
 
         DbItem Deleting _ ->
             -- Don't fold over items being deleted.
-            state
+            accum
 
         DbItem New _ ->
             -- Don't return items new, unsaved items in a "query".
-            state
+            accum
 
         DbItem _ a ->
-            reducer id a state
+            reducer id a accum
 
 
-mapWithId : (String -> a -> b) -> Collection a -> List b
+mapWithId : (Document.Id -> a -> b) -> Collection a -> List b
 mapWithId fn =
     foldrWithId (\id item accum -> fn id item :: accum) []
 
@@ -219,15 +228,15 @@ sortBy sorter collection =
         |> List.sortBy sorter
 
 
-insert : String -> a -> Collection a -> Collection a
+insert : Document.Id -> a -> Collection a -> Collection a
 insert id item collection =
     { collection
-        | items = Dict.insert id (DbItem Saving item) collection.items
+        | items = Dict.insert id (DbItem New item) collection.items
         , writeQueue = Set.insert id collection.writeQueue
     }
 
 
-insertTransient : String -> a -> Collection a -> Collection a
+insertTransient : Document.Id -> a -> Collection a -> Collection a
 insertTransient id item collection =
     { collection
         | items = Dict.insert id (DbItem New item) collection.items
@@ -237,7 +246,7 @@ insertTransient id item collection =
 {-| Note: An item is only added to the Collection.writeQueue if it actually changed.
 This prevents potential infinite update loops.
 -}
-update : String -> (a -> a) -> Collection a -> Collection a
+update : Document.Id -> (a -> a) -> Collection a -> Collection a
 update id fn collection =
     let
         updateIfChanged : a -> Maybe (Collection a)
@@ -254,9 +263,6 @@ update id fn collection =
                     { collection
                         | items = Dict.insert id (DbItem Modified updatedItem) collection.items
                         , writeQueue = Set.insert id collection.writeQueue
-
-                        -- TODO Should we remove it from the deleteQueue as well.
-                        -- Foresee from very odd edgecase
                     }
     in
     Dict.get id collection.items
@@ -284,7 +290,7 @@ update id fn collection =
 {-| Use if you don't want to immediately delete something off the server,
 and you want to batch your updates/deletes with `Firestore.Cmd.processQueue`.
 -}
-remove : String -> Collection a -> Collection a
+remove : Document.Id -> Collection a -> Collection a
 remove id collection =
     let
         delFn mItem =
@@ -302,6 +308,5 @@ remove id collection =
     in
     { collection
         | items = Dict.update id delFn collection.items
-        , writeQueue = Set.remove id collection.writeQueue
-        , deleteQueue = Set.insert id collection.deleteQueue
+        , writeQueue = Set.insert id collection.writeQueue
     }

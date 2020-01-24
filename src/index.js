@@ -288,7 +288,6 @@ const deleteDocument = (state, document) => {
       operation: state.cmdNames.updated,
       path: document.path,
       id: document.id,
-      data: document.data,
       state: "deleting",
     });
 
@@ -303,7 +302,6 @@ const deleteDocument = (state, document) => {
         state.logger("document-deleted", {
           collectionPath: document.path,
           docId: document.id,
-          docData: document.data,
           docState: "deleted",
         });
 
@@ -312,7 +310,6 @@ const deleteDocument = (state, document) => {
           path: document.path,
           id: document.id,
           state: "deleted",
-          data: null,
         });
       };
     })

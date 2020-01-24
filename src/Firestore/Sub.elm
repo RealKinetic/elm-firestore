@@ -2,7 +2,7 @@ module Firestore.Sub exposing (..)
 
 import Dict exposing (Dict)
 import Firestore.Collection exposing (Collection)
-import Firestore.Document as Document exposing (Document, Path, State(..))
+import Firestore.Document as Document exposing (Document, State(..))
 import Firestore.Internal exposing (Item(..))
 import Json.Decode as Decode exposing (Decoder)
 
@@ -11,7 +11,7 @@ type Msg
     = DocumentCreated Document
     | DocumentRead Document
     | DocumentUpdated Document
-    | DocumentDeleted Document
+    | DocumentDeleted Document.Path
     | Error Error
 
 
@@ -100,7 +100,7 @@ msgDecoder =
                         Decode.map DocumentUpdated Document.decoder
 
                     "DocumentDeleted" ->
-                        Decode.map DocumentDeleted Document.decoder
+                        Decode.map DocumentDeleted Document.pathDecoder
 
                     "Error" ->
                         Decode.map (PlaceholderError >> Error)

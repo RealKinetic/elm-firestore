@@ -5,27 +5,28 @@ import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
 
 
-{-| Collection paths have odd # of slashes
+{-| Collection paths always have odd number of slashes
 e.g. /accounts or /accounts/{accountId}/notes
-
-Document paths have even number of slashes
-e.g. /accounts/{accountId}/notes/{noteId}
-
-TODO - Should be list of strings which we'll join with / ourselves?
-Check list to make sure it's length is odd?
-
 -}
+type alias CollectionPath =
+    String
+
+
+type alias Id =
+    String
+
+
 type alias Document =
-    { path : String
-    , id : String
+    { path : CollectionPath
+    , id : Id
     , state : State
     , data : Encode.Value
     }
 
 
 type alias Path =
-    { path : String
-    , id : String
+    { path : CollectionPath
+    , id : Id
     }
 
 
@@ -61,7 +62,6 @@ type State
     | Modified
     | Deleting
     | Deleted
-    | StateError
 
 
 encodeState : State -> Encode.Value
@@ -89,38 +89,34 @@ encodeState state =
             Deleted ->
                 "deleted"
 
-            StateError ->
-                "error"
-
 
 decodeState : Decode.Decoder State
 decodeState =
     Decode.string
         |> Decode.andThen
-            (\v ->
-                Decode.succeed <|
-                    case v of
-                        "new" ->
-                            New
+            (\val ->
+                case val of
+                    "new" ->
+                        Decode.succeed New
 
-                        "cached" ->
-                            Cached
+                    "cached" ->
+                        Decode.succeed Cached
 
-                        "saved" ->
-                            Saved
+                    "saved" ->
+                        Decode.succeed Saved
 
-                        "saving" ->
-                            Saving
+                    "saving" ->
+                        Decode.succeed Saving
 
-                        "modified" ->
-                            Modified
+                    "modified" ->
+                        Decode.succeed Modified
 
-                        "deleting" ->
-                            Deleting
+                    "deleting" ->
+                        Decode.succeed Deleting
 
-                        "deleted" ->
-                            Deleted
+                    "deleted" ->
+                        Decode.succeed Deleted
 
-                        _ ->
-                            StateError
+                    _ ->
+                        Decode.fail <| "Unknown Document.State " ++ val
             )

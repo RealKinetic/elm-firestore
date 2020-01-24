@@ -1,6 +1,5 @@
 module Firestore.Cmd exposing
-    ( Msg
-    , NewDocId(..)
+    ( NewDocId(..)
     , createDocument
     , createTransientDocument
     , encode
@@ -11,21 +10,29 @@ module Firestore.Cmd exposing
 
 import Dict
 import Firestore.Collection as Collection exposing (Collection)
-import Firestore.Document exposing (Document, Path, State(..))
+import Firestore.Document as Document exposing (State(..))
 import Firestore.Internal exposing (Item(..))
 import Json.Encode as Encode
 import Set
 
 
+type alias Document =
+    { path : String
+    , id : String
+    , data : Encode.Value
+    }
+
+
 type Msg
-    = SubscribeCollection String
-    | UnsubscribeCollection String
+    = SubscribeCollection Collection.Path
+    | UnsubscribeCollection Collection.Path
     | CreateDocument Bool Document
-    | GetDocument Path
+    | ReadDocument Document.Path
     | UpdateDocument Document
-    | DeleteDocument Path
+    | DeleteDocument Document.Path
 
 
+{-| -}
 watchCollection :
     { toFirestore : Encode.Value -> Cmd msg
     , collection : Collection a
@@ -37,6 +44,7 @@ watchCollection { toFirestore, collection } =
         |> toFirestore
 
 
+{-| -}
 type NewDocId
     = GenerateId
     | Id String
@@ -48,12 +56,26 @@ and/or responding to a `DocumentCreated`.
 Otherwise use `Collection.insert` with the `batchProcess` pattern.
 
 -}
+createDocument :
+    { toFirestore : Encode.Value -> Cmd msg
+    , collection : Collection a
+    , id : NewDocId
+    , data : a
+    }
+    -> Cmd msg
 createDocument =
     createDocument_ True
 
 
 {-| Create a document without immediately persisting to Firestore
 -}
+createTransientDocument :
+    { toFirestore : Encode.Value -> Cmd msg
+    , collection : Collection a
+    , id : NewDocId
+    , data : a
+    }
+    -> Cmd msg
 createTransientDocument =
     createDocument_ False
 
@@ -80,13 +102,13 @@ createDocument_ persist { toFirestore, collection, id, data } =
     CreateDocument persist
         { path = Collection.path collection
         , id = id_
-        , state = New
         , data = Collection.encodeItem collection data
         }
         |> encode
         |> toFirestore
 
 
+{-| -}
 updateDocument :
     { toFirestore : Encode.Value -> Cmd msg
     , collection : Collection a
@@ -98,7 +120,6 @@ updateDocument { toFirestore, collection, id, data } =
     UpdateDocument
         { path = Collection.path collection
         , id = id
-        , state = Modified
         , data = Collection.encodeItem collection data
         }
         |> encode
@@ -137,8 +158,8 @@ encode op =
                         ]
                 }
 
-            GetDocument { path, id } ->
-                { name = "GetDocument"
+            ReadDocument { path, id } ->
+                { name = "ReadDocument"
                 , data =
                     Encode.object
                         [ ( "path", Encode.string path )
