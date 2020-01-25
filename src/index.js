@@ -1,7 +1,7 @@
 
 exports.init = ({ firestore, fromElm, toElm, debug = false }) => {
 
-  let subNames = {
+  const subNames = {
     subscribeCollection: "SubscribeCollection",
     unsubscribeCollection: "UnsubscribeCollection",
     create: "CreateDocument",
@@ -10,7 +10,7 @@ exports.init = ({ firestore, fromElm, toElm, debug = false }) => {
     delete: "DeleteDocument",
   };
 
-  let cmdNames = {
+  const cmdNames = {
     created: "DocumentCreated",
     read: "DocumentRead",
     updated: "DocumentUpdated",
@@ -19,7 +19,7 @@ exports.init = ({ firestore, fromElm, toElm, debug = false }) => {
   };
 
   // "app" or "state"?
-  let appState = {
+  const appState = {
     firestore: firestore,
     toElm: toElm,
     collections: {},
@@ -74,7 +74,7 @@ exports.init = ({ firestore, fromElm, toElm, debug = false }) => {
 
 
 const subscribeCollection = (appState, collectionPath) => {
-  let unsubscribeFunction = appState
+  const unsubscribeFunction = appState
     .firestore
     .collection(collectionPath)
     .onSnapshot({ includeMetadataChanges: true },
@@ -118,18 +118,18 @@ const subscribeCollection = (appState, collectionPath) => {
       }
     );
 
-    // Mark function as watched, and set up unsubscription
-    appState.collections[collectionPath] = {
-      isWatching: true,
-      unsubscribe: () => {
-        unsubscribeFunction();
-        appState.collections[collectionPath].isWatching = false;
-      },
-    }
+  // Mark function as watched, and set up unsubscription
+  appState.collections[collectionPath] = {
+    isWatching: true,
+    unsubscribe: () => {
+      unsubscribeFunction();
+      appState.collections[collectionPath].isWatching = false;
+    },
+  }
 };
 
 const unsubscribeCollection = (appState, collectionPath) => {
-  let collectionState = appState.collections[collectionPath];
+  const collectionState = appState.collections[collectionPath];
 
   if (collectionState && typeof collectionState.unsubscribe === "function") {
     collectionState.unsubscribe();
@@ -149,7 +149,7 @@ const createDocument = (appState, document) => {
   }
 
   // Non-transient (persisted) documents will skip "new" and go straight to "saving".
-  let initialState = document.isTransient ? "new" : "saving";
+  const initialState = document.isTransient ? "new" : "saving";
 
   appState.logger("document-created", {
     collectionPath: document.path,
