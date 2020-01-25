@@ -22,12 +22,13 @@ exports.init = ({ firestore, fromElm, toElm, debug = false }) => {
   const appState = {
     firestore: firestore,
     toElm: toElm,
+    docs: {},
     collections: {},
     subNames: subNames,
     cmdNames: cmdNames,
     debug: debug,
-    logger: function(type, data) {
-      if (this.debug) { console.log("elm-firestore", type, data) };
+    logger: function(origin, data) {
+      if (this.debug) { console.log("elm-firestore", origin, data) };
     },
     isWatching: function(path) {
       return (this.collections[path] && this.collections[path].isWatching);
@@ -74,7 +75,9 @@ exports.init = ({ firestore, fromElm, toElm, debug = false }) => {
 
 
 const subscribeCollection = (appState, collectionPath) => {
-  const unsubscribeFunction = appState
+  appState.logger("subscribeCollection", collectionPath);
+
+  const unsubscribeFromCollection = appState
     .firestore
     .collection(collectionPath)
     .onSnapshot({ includeMetadataChanges: true },
@@ -96,21 +99,19 @@ const subscribeCollection = (appState, collectionPath) => {
               return;
             }
 
-            appState.logger("doc-change", {
-              changeType: change.type,
-              collectionPath: collectionPath,
-              docId: change.doc.id,
-              docData: docData,
-              docState: docState,
-            });
-
-            appState.toElm.send({
+            const data = {
               operation: cmdName,
               path: collectionPath,
               id: change.doc.id,
               data: docData,
               state: docState,
+            };
+
+            appState.logger("subscribeCollection", {
+              ...data,
+              changeType: change.type,
             });
+            appState.toElm.send(data);
         });
       },
       err => {
@@ -122,8 +123,8 @@ const subscribeCollection = (appState, collectionPath) => {
   appState.collections[collectionPath] = {
     isWatching: true,
     unsubscribe: () => {
-      unsubscribeFunction();
-      appState.collections[collectionPath].isWatching = false;
+      unsubscribeFromCollection();
+      delete appState.collections[collectionPath];
     },
   }
 };
@@ -131,9 +132,9 @@ const subscribeCollection = (appState, collectionPath) => {
 const unsubscribeCollection = (appState, collectionPath) => {
   const collectionState = appState.collections[collectionPath];
 
-  if (collectionState && typeof collectionState.unsubscribe === "function") {
+  if (collectionState) {
     collectionState.unsubscribe();
-    appState.logger("collection-unsubscribed", collectionPath);
+    appState.logger("unsubscribeCollection", collectionPath);
   }
 }
 
@@ -150,21 +151,16 @@ const createDocument = (appState, document) => {
 
   // Non-transient (persisted) documents will skip "new" and go straight to "saving".
   const initialState = document.isTransient ? "new" : "saving";
-
-  appState.logger("document-created", {
-    collectionPath: document.path,
-    docId: document.id,
-    docData: document.data,
-    docState: initialState,
-  });
-
-  appState.toElm.send({
+  const data = {
     operation: appState.cmdNames.created,
     path: document.path,
     id: doc.id,
     data: document.data,
     state: initialState,
-  });
+  };
+
+  appState.logger("createDocument", data);
+  appState.toElm.send(data);
 
   if (document.isTransient) {
     return;
@@ -175,20 +171,16 @@ const createDocument = (appState, document) => {
     .then(() => {
       // Send Msg to elm if collection is NOT already being watched.
       if (!appState.isWatching(document.path)) {
-        appState.logger("document-created", {
-          collectionPath: document.path,
-          docId: doc.id,
-          docData: document.data,
-          docState: "saved",
-        });
-
-        appState.toElm.send({
+        const nextData = {
           operation: appState.cmdNames.updated,
           path: document.path,
           id: doc.id,
           data: document.data,
           state: "saved",
-        });
+        };
+
+        appState.logger("createDocument", nextData);
+        appState.toElm.send(nextData);
       };
     })
     .catch(err => {
@@ -205,20 +197,18 @@ const readDocument = (appState, document) => {
     .doc(document.id)
     .get()
     .then(doc => {
-      appState.logger("document-get", {
-        collectionPath: document.path,
-        docId: document.id,
-        docData: doc.data(),
-        docState: "saved",
-      });
-
-      appState.toElm.send({
+      // TODO Will this grabbed cached items?
+      // Do we need to check for havePendingWrites?
+      const data = {
         operation: appState.cmdNames.read,
         path: document.path,
         id: document.id,
         data: doc.data(),
         state: "saved",
-      });
+      };
+
+      appState.logger("readDocument", data);
+      appState.toElm.send(data);
     })
     .catch(err => {
       console.error("readDocument", err);
@@ -228,21 +218,16 @@ const readDocument = (appState, document) => {
 
 // Update Document
 const updateDocument = (appState, document) => {
-
-  appState.logger("document-updated", {
-    collectionPath: document.path,
-    docId: document.id,
-    docData: document.data,
-    docState: "saving",
-  });
-
-  appState.toElm.send({
+  const data = {
     operation: appState.cmdNames.updated,
     path: document.path,
     id: doc.id,
     data: document.data,
     state: "saving",
-  });
+  };
+
+  appState.logger("updateDocument", data);
+  appState.toElm.send(data);
 
   appState
     .firestore
@@ -252,20 +237,16 @@ const updateDocument = (appState, document) => {
     .then(() => {
       // Send Msg to elm if collection is NOT already being watched.
       if (!appState.isWatching(document.path)) {
-        appState.logger("document-updated", {
-          collectionPath: document.path,
-          docId: document.id,
-          docData: document.data,
-          docState: "saved",
-        });
-
-        appState.toElm.send({
+        const nextData = {
           operation: appState.cmdNames.updated,
           path: document.path,
-          id: document.id,
+          id: doc.id,
           data: document.data,
           state: "saved",
-        });
+        }
+
+        appState.logger("updateDocument", nextData);
+        appState.toElm.send(nextData);
       };
     })
     .catch(err => {
@@ -276,20 +257,16 @@ const updateDocument = (appState, document) => {
 
 // Delete Document
 const deleteDocument = (appState, document) => {
+  const data = {
+    operation: appState.cmdNames.updated,
+    path: document.path,
+    id: document.id,
+    data: null,
+    state: "deleting",
+  };
 
-    appState.logger("document-deleted", {
-      collectionPath: document.path,
-      docId: document.id,
-      docState: "deleting",
-    });
-
-    appState.toElm.send({
-      operation: appState.cmdNames.updated,
-      path: document.path,
-      id: document.id,
-      data: null,
-      state: "deleting",
-    });
+  appState.logger("deleteDocument", data);
+  appState.toElm.send(data);
 
   appState
     .firestore
@@ -299,19 +276,16 @@ const deleteDocument = (appState, document) => {
     .then(() => {
       // Send Msg to elm if collection is NOT already being watched.
       if (!appState.isWatching(document.path)) {
-        appState.logger("document-deleted", {
-          collectionPath: document.path,
-          docId: document.id,
-          docState: "deleted",
-        });
-
-        appState.toElm.send({
+        const nextData = {
           operation: appState.cmdNames.deleted,
           path: document.path,
           id: document.id,
           data: null,
           state: "deleted",
-        });
+        };
+
+        appState.logger("deleteDocument", nextData);
+        appState.toElm.send(nextData);
       };
     })
     .catch(err => {
