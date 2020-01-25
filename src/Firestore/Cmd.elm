@@ -87,7 +87,7 @@ createDocument :
     }
     -> Cmd msg
 createDocument =
-    createDocumentHelper True
+    createDocumentHelper False
 
 
 {-| Create a document without immediately persisting to Firestore
@@ -100,7 +100,7 @@ createTransientDocument :
     }
     -> Cmd msg
 createTransientDocument =
-    createDocumentHelper False
+    createDocumentHelper True
 
 
 createDocumentHelper :
@@ -112,7 +112,7 @@ createDocumentHelper :
         , data : a
         }
     -> Cmd msg
-createDocumentHelper persist { toFirestore, collection, id, data } =
+createDocumentHelper isTransient { toFirestore, collection, id, data } =
     let
         id_ =
             case id of
@@ -122,7 +122,7 @@ createDocumentHelper persist { toFirestore, collection, id, data } =
                 Id string ->
                     string
     in
-    CreateDocument persist
+    CreateDocument isTransient
         { path = Collection.getPath collection
         , id = id_
         , data = Collection.encodeItem collection data
@@ -183,9 +183,10 @@ deleteDocument { toFirestore, collection, id } =
 
 
 {-| This persists all entities which have been added to the Collection.writeQueue
-via Collection.insert, Collection.insertTransient, Collection.update, and Collection.remove
+via Collection.insert, Collection.update, and Collection.remove
 
-The Saving state is initiated by Javascript and set on the item in Sub.processChange
+Javascript will notifiy Elm when the doc is "Saving",
+and Sub.processChange will update the collection accordingly.
 
 -}
 processQueue : (Encode.Value -> Cmd msg) -> Collection a -> ( Cmd msg, Collection a )
@@ -271,14 +272,14 @@ encode op =
                 , data = Encode.string path
                 }
 
-            CreateDocument persist { path, id, data } ->
+            CreateDocument isTransient { path, id, data } ->
                 { name = "CreateDocument"
                 , data =
                     Encode.object
                         [ ( "path", Encode.string path )
                         , ( "id", Encode.string id )
                         , ( "data", data )
-                        , ( "persist", Encode.bool persist )
+                        , ( "isTransient", Encode.bool isTransient )
                         ]
                 }
 

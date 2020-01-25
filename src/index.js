@@ -148,8 +148,8 @@ const createDocument = (state, document) => {
     doc = collection.doc(document.id);
   }
 
-  // Persisted documents will skip "new" and go straight to "saving".
-  let initialState = document.persist ? "saving" : "new";
+  // Non-transient (persisted) documents will skip "new" and go straight to "saving".
+  let initialState = document.isTransient ? "new" : "saving";
 
   state.logger("document-created", {
     collectionPath: document.path,
@@ -166,7 +166,7 @@ const createDocument = (state, document) => {
     state: initialState,
   });
 
-  if (!document.persist) {
+  if (document.isTransient) {
     return;
   }
 
