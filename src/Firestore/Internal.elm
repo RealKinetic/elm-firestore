@@ -1,10 +1,10 @@
-module Firestore.Internal exposing (..)
+module Firestore.Internal exposing (Collection(..))
 
 {-| -}
 
 import Dict exposing (Dict)
 import Firestore.Document as Document
-import Firestore.State exposing (Item)
+import Firestore.State exposing (State)
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Set exposing (Set)
@@ -33,20 +33,10 @@ type Collection a
         -- you will get a list of DocumentOperation writes that correspond to those
         -- updates and a Collection with items indicating they're being saved.
         --
-        { path : Path
-        , items : Dict Document.Id (Item a)
+        { path : String
+        , docs : Dict Document.Id ( State, a )
         , writeQueue : Set Document.Id
         , decoder : Decode.Decoder a
         , encoder : a -> Encode.Value
-        , comparator : Comparator a
+        , comparator : a -> a -> Basics.Order
         }
-
-
-{-| -}
-type alias Comparator a =
-    a -> a -> Basics.Order
-
-
-{-| -}
-type alias Path =
-    String

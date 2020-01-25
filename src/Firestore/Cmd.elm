@@ -14,7 +14,7 @@ module Firestore.Cmd exposing
 import Firestore.Collection as Collection exposing (Collection)
 import Firestore.Document as Document
 import Firestore.Internal exposing (Collection(..))
-import Firestore.State exposing (Item(..), State(..))
+import Firestore.State exposing (State(..))
 import Json.Encode as Encode
 import Set
 
@@ -197,25 +197,25 @@ processQueue toFirestore ((Collection collection_) as collection) =
         cmds =
             writeQueue
                 |> List.map
-                    (\( id, dbItem ) ->
-                        case dbItem of
-                            DbItem New item ->
+                    (\( id, state, doc ) ->
+                        case state of
+                            New ->
                                 createDocument
                                     { toFirestore = toFirestore
                                     , collection = collection
                                     , id = Id id
-                                    , data = item
+                                    , data = doc
                                     }
 
-                            DbItem Modified item ->
+                            Modified ->
                                 updateDocument
                                     { toFirestore = toFirestore
                                     , collection = collection
                                     , id = id
-                                    , data = item
+                                    , data = doc
                                     }
 
-                            DbItem Deleting _ ->
+                            Deleting ->
                                 deleteDocument
                                     { toFirestore = toFirestore
                                     , collection = collection

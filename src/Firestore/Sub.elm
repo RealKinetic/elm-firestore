@@ -11,7 +11,7 @@ import Dict exposing (Dict)
 import Firestore.Collection as Collection
 import Firestore.Document as Document exposing (Document)
 import Firestore.Internal exposing (Collection(..))
-import Firestore.State exposing (Item(..), State(..))
+import Firestore.State exposing (State(..))
 import Json.Decode as Decode exposing (Decoder)
 
 
@@ -106,19 +106,19 @@ processChangeHelper changeType doc (Collection collection) =
                 |> Decode.decodeValue collection.decoder
                 |> Result.toMaybe
 
-        updateUnlessDeleted : Item a -> Dict String (Item a)
+        updateUnlessDeleted : ( State, a ) -> Dict String ( State, a )
         updateUnlessDeleted item =
             if doc.state == Deleted then
-                Dict.remove doc.id collection.items
+                Dict.remove doc.id collection.docs
 
             else
-                Dict.insert doc.id item collection.items
+                Dict.insert doc.id item collection.docs
 
-        processUpdate : a -> Item a -> Dict String (Item a)
-        processUpdate new (DbItem oldState oldItem) =
-            case collection.comparator new oldItem of
+        processUpdate : a -> ( State, a ) -> Dict String ( State, a )
+        processUpdate newDoc ( oldState, oldDoc ) =
+            case collection.comparator newDoc oldDoc of
                 Basics.LT ->
-                    collection.items
+                    collection.docs
 
                 Basics.EQ ->
                     let
@@ -137,29 +137,28 @@ processChangeHelper changeType doc (Collection collection) =
                                 ( _, _ ) ->
                                     doc.state
                     in
-                    updateUnlessDeleted (DbItem state new)
+                    updateUnlessDeleted ( state, newDoc )
 
                 Basics.GT ->
-                    updateUnlessDeleted (DbItem doc.state new)
+                    updateUnlessDeleted ( doc.state, newDoc )
 
-        updatedItems : Dict String (Item a)
+        updatedItems : Dict String ( State, a )
         updatedItems =
             case decoded of
                 Just new ->
-                    case ( changeType, Dict.get doc.id collection.items ) of
+                    case ( changeType, Dict.get doc.id collection.docs ) of
                         ( _, Just old ) ->
                             processUpdate new old
 
                         ( DocumentDeleted, Nothing ) ->
-                            collection.items
+                            collection.docs
 
                         ( _, Nothing ) ->
-                            Dict.insert
-                                doc.id
-                                (DbItem doc.state new)
-                                collection.items
+                            Dict.insert doc.id
+                                ( doc.state, new )
+                                collection.docs
 
                 Nothing ->
-                    collection.items
+                    collection.docs
     in
-    Collection { collection | items = updatedItems }
+    Collection { collection | docs = updatedItems }

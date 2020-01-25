@@ -1,9 +1,4 @@
-module Firestore.State exposing
-    ( Item(..)
-    , State(..)
-    , decode
-    , encode
-    )
+module Firestore.State exposing (State(..), decoder, encode)
 
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -11,24 +6,12 @@ import Json.Encode as Encode
 
 type State
     = New
+    | Modified
+    | Saving
     | Cached
     | Saved
-    | Saving
-    | Modified
     | Deleting
     | Deleted
-
-
-
--- TODO Alternative naming?
--- type Stateful = DbItem
--- type DbItem = DbItem
---
--- Remove it and just use a tuple (State, a)?
-
-
-type Item a
-    = DbItem State a
 
 
 encode : State -> Encode.Value
@@ -38,17 +21,17 @@ encode state =
             New ->
                 "new"
 
+            Modified ->
+                "modified"
+
+            Saving ->
+                "saving"
+
             Cached ->
                 "cached"
 
             Saved ->
                 "saved"
-
-            Saving ->
-                "saving"
-
-            Modified ->
-                "modified"
 
             Deleting ->
                 "deleting"
@@ -57,8 +40,8 @@ encode state =
                 "deleted"
 
 
-decode : Decode.Decoder State
-decode =
+decoder : Decode.Decoder State
+decoder =
     Decode.string
         |> Decode.andThen
             (\val ->
@@ -66,17 +49,17 @@ decode =
                     "new" ->
                         Decode.succeed New
 
+                    "modified" ->
+                        Decode.succeed Modified
+
+                    "saving" ->
+                        Decode.succeed Saving
+
                     "cached" ->
                         Decode.succeed Cached
 
                     "saved" ->
                         Decode.succeed Saved
-
-                    "saving" ->
-                        Decode.succeed Saving
-
-                    "modified" ->
-                        Decode.succeed Modified
 
                     "deleting" ->
                         Decode.succeed Deleting

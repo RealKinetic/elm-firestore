@@ -45,5 +45,5 @@ decoder =
     Decode.succeed Document
         |> required "path" Decode.string
         |> required "id" Decode.string
-        |> required "state" State.decode
+        |> required "state" State.decoder
         |> required "data" Decode.value

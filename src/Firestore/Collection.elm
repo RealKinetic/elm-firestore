@@ -2,8 +2,8 @@ module Firestore.Collection exposing (..)
 
 import Dict exposing (Dict)
 import Firestore.Document as Document
-import Firestore.Internal as Internal exposing (Collection(..), Path)
-import Firestore.State exposing (Item(..), State(..))
+import Firestore.Internal as Internal exposing (Collection(..))
+import Firestore.State exposing (State(..))
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Set exposing (Set)
@@ -16,12 +16,12 @@ type alias Collection a =
 
 {-| -}
 type alias Comparator a =
-    Internal.Comparator a
+    a -> a -> Basics.Order
 
 
 {-| -}
 type alias Path =
-    Internal.Path
+    String
 
 
 {-| -}
@@ -33,7 +33,7 @@ empty :
 empty encoder decoder comparator =
     Collection
         { path = ""
-        , items = Dict.empty
+        , docs = Dict.empty
         , writeQueue = Set.empty
         , decoder = decoder
         , encoder = encoder
@@ -41,32 +41,32 @@ empty encoder decoder comparator =
         }
 
 
-{-| TODO path or getPath?
--}
+{-| -}
 getPath : Collection a -> String
 getPath (Collection collection) =
     collection.path
 
 
-getWriteQueue : Collection a -> List ( Document.Id, Item a )
+{-| -}
+getWriteQueue : Collection a -> List ( Document.Id, State, a )
 getWriteQueue (Collection collection) =
     collection.writeQueue
         |> Set.toList
         |> List.map
-            (\docId ->
-                Dict.get docId collection.items
-                    |> Maybe.map (Tuple.pair docId)
+            (\id ->
+                Dict.get id collection.docs
+                    |> Maybe.map (\( state, doc ) -> ( id, state, doc ))
             )
         |> List.filterMap identity
 
 
 {-| -}
 toList : Collection a -> List ( Document.Id, a )
-toList (Collection { items }) =
+toList (Collection { docs }) =
     Dict.foldr
-        (\docId (DbItem _ doc) accum -> ( docId, doc ) :: accum)
+        (\id ( _, doc ) accum -> ( id, doc ) :: accum)
         []
-        items
+        docs
 
 
 {-| -}
@@ -87,34 +87,35 @@ get id collection =
     collection
         |> getWithState id
         |> Maybe.andThen
-            (\(DbItem state a) ->
+            (\( state, doc ) ->
                 case state of
                     Deleted ->
                         Nothing
 
                     _ ->
-                        Just a
+                        Just doc
             )
 
 
 {-| -}
 filter : (Document.Id -> a -> Bool) -> Collection a -> List a
-filter fn =
+filter filterFn =
     filterMap
-        (\docId item ->
-            if fn docId item then
-                Just item
+        (\id doc ->
+            if filterFn id doc then
+                Just doc
 
             else
                 Nothing
         )
 
 
-{-| -}
+{-| Note: Excludes New/Deleting/Deleted
+-}
 filterMap : (Document.Id -> a -> Maybe b) -> Collection a -> List b
 filterMap filterFn =
     let
-        filterFn_ docId state doc =
+        filterFn_ id state doc =
             case state of
                 Deleted ->
                     -- Don't return _deleted_ items.
@@ -129,25 +130,27 @@ filterMap filterFn =
                     Nothing
 
                 _ ->
-                    filterFn docId doc
+                    filterFn id doc
     in
     filterMapWithState filterFn_
 
 
-{-| -}
+{-| Note: Excludes New/Deleting/Deleted
+-}
 foldl : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
 foldl reducer =
     foldlWithState (reducerHelper reducer)
 
 
-{-| -}
+{-| Note: Excludes New/Deleting/Deleted
+-}
 foldr : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
 foldr reducer =
     foldrWithState (reducerHelper reducer)
 
 
 reducerHelper : (Document.Id -> a -> b -> b) -> Document.Id -> State -> a -> b -> b
-reducerHelper reducer id state item accum =
+reducerHelper reducer id state doc accum =
     case state of
         Deleted ->
             -- Don't fold over _deleted_ items.
@@ -162,16 +165,18 @@ reducerHelper reducer id state item accum =
             accum
 
         _ ->
-            reducer id item accum
+            reducer id doc accum
 
 
-{-| -}
-mapWithId : (Document.Id -> a -> b) -> Collection a -> List b
-mapWithId fn =
-    mapWithState (\id _ doc -> fn id doc)
+{-| Note: Excludes New/Deleting/Deleted
+-}
+map : (Document.Id -> a -> b) -> Collection a -> List b
+map fn =
+    foldr (\id doc accum -> fn id doc :: accum) []
 
 
-{-| -}
+{-| Note: Excludes New/Deleting/Deleted
+-}
 sortBy : (a -> comparable) -> Collection a -> List a
 sortBy sorter collection =
     filterMap (\_ doc -> Just doc) collection
@@ -180,68 +185,68 @@ sortBy sorter collection =
 
 {-| -}
 insert : Document.Id -> a -> Collection a -> Collection a
-insert id item (Collection collection) =
+insert id doc (Collection collection) =
     Collection
         { collection
-            | items = Dict.insert id (DbItem New item) collection.items
+            | docs = Dict.insert id ( New, doc ) collection.docs
             , writeQueue = Set.insert id collection.writeQueue
         }
 
 
 {-| -}
 insertTransient : Document.Id -> a -> Collection a -> Collection a
-insertTransient id item (Collection collection) =
+insertTransient id doc (Collection collection) =
     Collection
         { collection
-            | items = Dict.insert id (DbItem New item) collection.items
+            | docs = Dict.insert id ( New, doc ) collection.docs
         }
 
 
 {-| Note: An item is only added to the Collection.writeQueue if it actually changed.
 This prevents potential infinite update loops.
 
-TODO revise this to see if we can't do a (Maybe a -> Maybe a) like Dict.update
+If the item is not found, nothing is updated.
 
 -}
 update : Document.Id -> (a -> a) -> Collection a -> Collection a
-update id fn (Collection collection) =
+update id fn ((Collection collection) as collection_) =
     let
-        updateIfChanged item =
+        updateIfChanged doc =
             let
-                updatedItem =
-                    fn item
+                updatedDoc =
+                    fn doc
             in
-            if item == updatedItem then
+            if doc == updatedDoc then
                 Nothing
 
             else
                 Just
                     { collection
-                        | items = Dict.insert id (DbItem Modified updatedItem) collection.items
+                        | docs = Dict.insert id ( Modified, updatedDoc ) collection.docs
                         , writeQueue = Set.insert id collection.writeQueue
                     }
     in
-    Dict.get id collection.items
+    Dict.get id collection.docs
         |> (\mItem ->
                 case mItem of
-                    Just (DbItem Deleted _) ->
+                    Just ( Deleted, _ ) ->
                         Just
                             { collection
-                                | items = collection.items |> Dict.remove id
+                                | docs = collection.docs |> Dict.remove id
                             }
 
-                    Just (DbItem Deleting _) ->
+                    Just ( Deleting, _ ) ->
                         Nothing
 
-                    Just (DbItem _ item) ->
-                        updateIfChanged item
+                    Just ( _, doc ) ->
+                        updateIfChanged doc
 
                     Nothing ->
                         Nothing
            )
         -- Return the same collection if nothing changed; plays nice with Html.lazy
         |> Maybe.map Collection
-        |> Maybe.withDefault (Collection collection)
+        |> Maybe.withDefault collection_
 
 
 {-| Use if you don't want to immediately delete something off the server,
@@ -253,19 +258,19 @@ remove id (Collection collection) =
         delFn mItem =
             case mItem of
                 -- Do not update Deleted -> Deleting
-                Just (DbItem Deleted a) ->
-                    Just <| DbItem Deleted a
+                Just ( Deleted, doc ) ->
+                    Just ( Deleted, doc )
 
                 -- All other items will be marked Deleting
-                Just (DbItem _ a) ->
-                    Just <| DbItem Deleting a
+                Just ( _, doc ) ->
+                    Just ( Deleting, doc )
 
                 Nothing ->
                     Nothing
     in
     Collection
         { collection
-            | items = Dict.update id delFn collection.items
+            | docs = Dict.update id delFn collection.docs
             , writeQueue = Set.insert id collection.writeQueue
         }
 
@@ -278,14 +283,17 @@ remove id (Collection collection) =
 
 
 {-| -}
-getWithState : Document.Id -> Collection a -> Maybe (Item a)
+getWithState : Document.Id -> Collection a -> Maybe ( State, a )
 getWithState id (Collection collection) =
-    Dict.get id collection.items
+    Dict.get id collection.docs
 
 
-toListWithState : Collection a -> List ( Document.Id, Item a )
-toListWithState (Collection { items }) =
-    Dict.toList items
+toListWithState : Collection a -> List ( Document.Id, State, a )
+toListWithState (Collection { docs }) =
+    Dict.foldr
+        (\id ( state, doc ) accum -> ( id, state, doc ) :: accum)
+        []
+        docs
 
 
 {-| -}
@@ -299,9 +307,9 @@ filterWithState : (Document.Id -> a -> Bool) -> Collection a -> List a
 filterWithState fn collection =
     collection
         |> filterMap
-            (\docId item ->
-                if fn docId item then
-                    Just item
+            (\id doc ->
+                if fn id doc then
+                    Just doc
 
                 else
                     Nothing
@@ -315,18 +323,16 @@ filterMapWithState filterFn collection =
     collection
         |> toListWithState
         |> List.filterMap
-            (\( docId, DbItem state doc ) ->
-                filterFn docId state doc
-            )
+            (\( id, state, doc ) -> filterFn id state doc)
 
 
 {-| Will NOT exlcude New/Deleted/Deleting like `Collection.foldl`
 -}
 foldlWithState : (Document.Id -> State -> a -> b -> b) -> b -> Collection a -> b
 foldlWithState reducer initial (Collection collection) =
-    collection.items
+    collection.docs
         |> Dict.foldl
-            (\id (DbItem state doc) accum ->
+            (\id ( state, doc ) accum ->
                 reducer id state doc accum
             )
             initial
@@ -336,19 +342,9 @@ foldlWithState reducer initial (Collection collection) =
 -}
 foldrWithState : (Document.Id -> State -> a -> b -> b) -> b -> Collection a -> b
 foldrWithState reducer initial (Collection collection) =
-    collection.items
+    collection.docs
         |> Dict.foldr
-            (\id (DbItem state doc) accum ->
+            (\id ( state, doc ) accum ->
                 reducer id state doc accum
             )
             initial
-
-
-{-| Will NOT exlcude New/Deleted/Deleting like `Collection.sortBy`
--}
-sortByWithState : (State -> a -> comparable) -> Collection a -> List a
-sortByWithState sorter collection =
-    collection
-        |> toListWithState
-        |> List.sortBy (\( id, DbItem state doc ) -> sorter state doc)
-        |> List.map (\( _, DbItem _ doc ) -> doc)

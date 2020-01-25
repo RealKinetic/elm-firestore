@@ -1,7 +1,6 @@
 port module Main exposing (Model, main)
 
 import Browser
-import Dict
 import Firestore.Cmd exposing (NewDocId(..))
 import Firestore.Collection as Collection exposing (Collection)
 import Firestore.Document
@@ -9,6 +8,7 @@ import Firestore.Sub
 import Html exposing (Html)
 import Html.Events exposing (onClick)
 import Json.Decode as Decode exposing (Decoder)
+import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
 import Time exposing (Posix)
 
@@ -37,11 +37,8 @@ type alias Model =
     { userId : Maybe String
     , currentTime : Posix
     , notes : Collection Note
+    , people : Collection Person
     }
-
-
-type alias Note =
-    { desc : String, title : String }
 
 
 init : Model
@@ -50,25 +47,61 @@ init =
     , currentTime = Time.millisToPosix 0
     , notes =
         Collection.empty
-            encodeNote
-            decodeNote
+            noteEncoder
+            noteDecoder
+            (\_ _ -> Basics.GT)
+    , people =
+        Collection.empty
+            personEncoder
+            personDecoder
             (\_ _ -> Basics.GT)
     }
 
 
-encodeNote : Note -> Encode.Value
-encodeNote { desc, title } =
+
+--
+
+
+type alias Note =
+    { desc : String, title : String }
+
+
+noteEncoder : Note -> Encode.Value
+noteEncoder { desc, title } =
     Encode.object
         [ ( "desc", Encode.string desc )
         , ( "title", Encode.string title )
         ]
 
 
-decodeNote : Decoder Note
-decodeNote =
+noteDecoder : Decoder Note
+noteDecoder =
     Decode.map2 Note
         (Decode.field "desc" Decode.string)
         (Decode.field "title" Decode.string)
+
+
+
+--
+
+
+type alias Person =
+    { name : String, email : String }
+
+
+personEncoder : Person -> Encode.Value
+personEncoder { name, email } =
+    Encode.object
+        [ ( "name", Encode.string name )
+        , ( "email", Encode.string email )
+        ]
+
+
+personDecoder : Decoder Person
+personDecoder =
+    Decode.map2 Person
+        (Decode.field "name" Decode.string)
+        (Decode.field "email" Decode.string)
 
 
 
@@ -89,7 +122,7 @@ view model =
                             [ Html.text "Create Note" ]
                         , Html.button [ onClick (UpdateNote (Note "fooz" "barz")) ]
                             [ Html.text "Update Note" ]
-                        , Html.div [] (Collection.mapWithId viewNote model.notes)
+                        , Html.div [] (Collection.map viewNote model.notes)
                         ]
 
                 Nothing ->
@@ -170,8 +203,8 @@ update msg model =
                 anyOldIdWillDo =
                     model.notes
                         |> Collection.toList
-                        |> List.map Tuple.first
                         |> List.head
+                        |> Maybe.map Tuple.first
                         |> Maybe.withDefault "error"
             in
             ( model
@@ -198,9 +231,12 @@ handleFirestoreMsg model msg =
     case msg of
         Firestore.Sub.Change changeType document ->
             ( { model
+                -- If the document.path does not match the collection.path,
+                -- we just return the collection unaltered. Cleans up nicely.
                 | notes = Firestore.Sub.processChange changeType document model.notes
+                , people = Firestore.Sub.processChange changeType document model.people
               }
-            , cmdFromChange changeType document
+            , handleChange model changeType document
             )
 
         Firestore.Sub.Read document ->
@@ -210,9 +246,39 @@ handleFirestoreMsg model msg =
             ( model, Cmd.none )
 
 
-cmdFromChange : Firestore.Sub.ChangeType -> Firestore.Document.Document -> Cmd Msg
-cmdFromChange _ _ =
-    Cmd.none
+handleChange : Model -> Firestore.Sub.ChangeType -> Firestore.Document.Document -> Cmd Msg
+handleChange model changeType doc =
+    case changeType of
+        Firestore.Sub.DocumentCreated ->
+            -- We could decide to fire off a Navigation event here for instance.
+            if isNotes model doc then
+                Cmd.none
+
+            else if isPeople model doc then
+                Cmd.none
+
+            else
+                Cmd.none
+
+        Firestore.Sub.DocumentUpdated ->
+            Cmd.none
+
+        Firestore.Sub.DocumentDeleted ->
+            Cmd.none
+
+
+
+-- Helpers
+
+
+isNotes : Model -> Firestore.Document.Document -> Bool
+isNotes { notes } doc =
+    Collection.getPath notes == doc.path
+
+
+isPeople : Model -> Firestore.Document.Document -> Bool
+isPeople { people } doc =
+    Collection.getPath people == doc.path
 
 
 
