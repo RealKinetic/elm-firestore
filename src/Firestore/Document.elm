@@ -7,7 +7,7 @@ module Firestore.Document exposing
 
 import Firestore.State as State exposing (State)
 import Json.Decode as Decode exposing (Decoder)
-import Json.Decode.Pipeline exposing (required)
+import Json.Decode.Pipeline exposing (custom, required)
 import Json.Encode as Encode
 
 
@@ -27,6 +27,7 @@ type alias Document =
     , id : Id
     , state : State
     , data : Encode.Value
+    , metadata : Maybe String
     }
 
 
@@ -36,10 +37,6 @@ type alias Path =
     }
 
 
-
--------------------------------------------------------
-
-
 decoder : Decoder Document
 decoder =
     Decode.succeed Document
@@ -47,3 +44,4 @@ decoder =
         |> required "id" Decode.string
         |> required "state" State.decoder
         |> required "data" Decode.value
+        |> custom (Decode.field "metadata" (Decode.maybe Decode.string))

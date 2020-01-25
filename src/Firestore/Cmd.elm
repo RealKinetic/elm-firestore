@@ -29,14 +29,16 @@ type alias Document =
     , data : Encode.Value
     }
 
+type alias Metadata = Maybe String
+
 
 type Msg
     = SubscribeCollection Collection.Path
     | UnsubscribeCollection Collection.Path
-    | CreateDocument Bool Document
-    | ReadDocument Document.Path
-    | UpdateDocument Document
-    | DeleteDocument Document.Path
+    | CreateDocument Metadata  Bool Document
+    | ReadDocument Metadata Document.Path
+    | UpdateDocument Metadata Document
+    | DeleteDocument Metadata Document.Path
 
 
 
@@ -84,6 +86,7 @@ createDocument :
     , collection : Collection a
     , id : NewDocId
     , data : a
+    , metadata: Maybe String
     }
     -> Cmd msg
 createDocument =
@@ -97,6 +100,7 @@ createTransientDocument :
     , collection : Collection a
     , id : NewDocId
     , data : a
+    , metadata: Maybe String
     }
     -> Cmd msg
 createTransientDocument =
@@ -110,9 +114,10 @@ createDocumentHelper :
         , collection : Collection a
         , id : NewDocId
         , data : a
+        , metadata: Maybe String
         }
     -> Cmd msg
-createDocumentHelper isTransient { toFirestore, collection, id, data } =
+createDocumentHelper isTransient { toFirestore, collection, id, data, metadata } =
     let
         id_ =
             case id of
@@ -122,7 +127,7 @@ createDocumentHelper isTransient { toFirestore, collection, id, data } =
                 Id string ->
                     string
     in
-    CreateDocument isTransient
+    CreateDocument metadata isTransient
         { path = Collection.getPath collection
         , id = id_
         , data = Collection.encodeItem collection data
@@ -137,10 +142,11 @@ readDocument :
     { toFirestore : Encode.Value -> Cmd msg
     , collection : Collection a
     , id : String
+    , metadata: Maybe String
     }
     -> Cmd msg
-readDocument { toFirestore, collection, id } =
-    ReadDocument
+readDocument { toFirestore, collection, id, metadata } =
+    ReadDocument metadata
         { path = Collection.getPath collection
         , id = id
         }
@@ -154,10 +160,11 @@ updateDocument :
     , collection : Collection a
     , id : String
     , data : a
+    , metadata: Maybe String
     }
     -> Cmd msg
-updateDocument { toFirestore, collection, id, data } =
-    UpdateDocument
+updateDocument { toFirestore, collection, id, data, metadata } =
+    UpdateDocument metadata
         { path = Collection.getPath collection
         , id = id
         , data = Collection.encodeItem collection data
@@ -171,10 +178,11 @@ deleteDocument :
     { toFirestore : Encode.Value -> Cmd msg
     , collection : Collection a
     , id : String
+    , metadata: Maybe String
     }
     -> Cmd msg
-deleteDocument { toFirestore, collection, id } =
-    DeleteDocument
+deleteDocument { toFirestore, collection, id, metadata } =
+    DeleteDocument metadata
         { path = Collection.getPath collection
         , id = id
         }
@@ -280,6 +288,7 @@ encode op =
                         , ( "id", Encode.string id )
                         , ( "data", data )
                         , ( "isTransient", Encode.bool isTransient )
+                        , ("metadata", Encode.
                         ]
                 }
 
@@ -289,6 +298,7 @@ encode op =
                     Encode.object
                         [ ( "path", Encode.string path )
                         , ( "id", Encode.string id )
+                        , ("metadata", Encode.
                         ]
                 }
 
@@ -299,6 +309,7 @@ encode op =
                         [ ( "path", Encode.string path )
                         , ( "id", Encode.string id )
                         , ( "data", data )
+                        , ("metadata", Encode.
                         ]
                 }
 
@@ -308,5 +319,6 @@ encode op =
                     Encode.object
                         [ ( "path", Encode.string path )
                         , ( "id", Encode.string id )
+                        , ("metadata", Encode.
                         ]
                 }

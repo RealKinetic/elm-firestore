@@ -33,6 +33,30 @@ exports.init = ({ firestore, fromElm, toElm, debug = false }) => {
     isWatching: function(path) {
       return (this.collections[path] && this.collections[path].isWatching);
     },
+    // Document metadata
+    setMetadata: function(docId, metadata) {
+      if (this.docs[docId]) {
+        this.docs[docId].metadata = metadata;
+      }
+    },
+    // Metadata only lasts as long as a create/read/update/delete lifecycle.
+    // If it doesn't exist, then the docChange is coming from a collectionSubscription,
+    // where the change originated from outside the app (e.g. server or another device).
+    //
+    // This is very liable to race conditions, and needs to be thought through
+    // and implemented defensively.
+    getMetadata: function(docId) {
+      if (this.docs[docId] && this.docs[docId].metadata) {
+        return this.docs[docId].metadata;
+      } else {
+        return "EXTERNAL"
+      }
+    },
+    clearMetadata: function(docId) {
+      if (this.docs[docId]) {
+        this.docs[docId].metadata = null;
+      }
+    },
   };
 
   fromElm.subscribe(msg => {
@@ -84,16 +108,18 @@ const subscribeCollection = (appState, collectionPath) => {
       snapshot => {
         snapshot
           .docChanges({ includeMetadataChanges: true }).forEach(change => {
-            let docState, docData, cmdName;
+            let docState, docData, cmdName, metadata;
 
             if (change.type === "modified" || change.type === "added") {
               docState = change.doc.metadata.hasPendingWrites ? "cached" : "saved";
               docData = change.doc.data();
               cmdName = appState.cmdNames.updated;
+              metadata = appState.getMetadata(change.doc.id);
             } else if (change.type === "removed") {
               docState = "deleted"; // No hasPendingWrites for deleted items.
               docData = null;
               cmdName = appState.cmdNames.deleted;
+              metadata = appState.getMetadata(change.doc.id);
             } else {
               console.error("unknown doc change type", change.type);
               return;
@@ -105,6 +131,7 @@ const subscribeCollection = (appState, collectionPath) => {
               id: change.doc.id,
               data: docData,
               state: docState,
+              metadata: metadata,
             };
 
             appState.logger("subscribeCollection", {
@@ -112,6 +139,11 @@ const subscribeCollection = (appState, collectionPath) => {
               changeType: change.type,
             });
             appState.toElm.send(data);
+
+            // Clear metadata once doc cycle is complete.
+            if (docState === "saved" || docState === "deleted") {
+              appState.clearMetadata(change.doc.id);
+            };
         });
       },
       err => {
@@ -149,6 +181,8 @@ const createDocument = (appState, document) => {
     doc = collection.doc(document.id);
   }
 
+  appState.setMetadata(doc.id, document.metadata)
+
   // Non-transient (persisted) documents will skip "new" and go straight to "saving".
   const initialState = document.isTransient ? "new" : "saving";
   const data = {
@@ -157,6 +191,7 @@ const createDocument = (appState, document) => {
     id: doc.id,
     data: document.data,
     state: initialState,
+    metadata: document.metadata,
   };
 
   appState.logger("createDocument", data);
@@ -177,14 +212,17 @@ const createDocument = (appState, document) => {
           id: doc.id,
           data: document.data,
           state: "saved",
+          metadata: document.metadata,
         };
 
         appState.logger("createDocument", nextData);
         appState.toElm.send(nextData);
+        appState.clearMetadata(doc.id);
       };
     })
     .catch(err => {
       console.error("createDocument", err)
+      appState.clearMetadata(doc.id);
     });
 };
 
@@ -205,6 +243,7 @@ const readDocument = (appState, document) => {
         id: document.id,
         data: doc.data(),
         state: "saved",
+        metadata: document.metadata,
       };
 
       appState.logger("readDocument", data);
@@ -218,15 +257,18 @@ const readDocument = (appState, document) => {
 
 // Update Document
 const updateDocument = (appState, document) => {
+
   const data = {
     operation: appState.cmdNames.updated,
     path: document.path,
-    id: doc.id,
+    id: document.id,
     data: document.data,
     state: "saving",
+    metadata: document.metadata,
   };
 
   appState.logger("updateDocument", data);
+  appState.setMetadata(document.id, document.metadata);
   appState.toElm.send(data);
 
   appState
@@ -240,17 +282,20 @@ const updateDocument = (appState, document) => {
         const nextData = {
           operation: appState.cmdNames.updated,
           path: document.path,
-          id: doc.id,
+          id: document.id,
           data: document.data,
           state: "saved",
+          metadata: document.metadata,
         }
 
         appState.logger("updateDocument", nextData);
         appState.toElm.send(nextData);
+        appState.clearMetadata(document.id);
       };
     })
     .catch(err => {
       console.error("updateDocument", err);
+      appState.clearMetadata(document.id);
     });
 };
 
@@ -263,9 +308,11 @@ const deleteDocument = (appState, document) => {
     id: document.id,
     data: null,
     state: "deleting",
+    metadata: document.metadata,
   };
 
   appState.logger("deleteDocument", data);
+  appState.setMetadata(document.id, document.metadata);
   appState.toElm.send(data);
 
   appState
@@ -282,13 +329,16 @@ const deleteDocument = (appState, document) => {
           id: document.id,
           data: null,
           state: "deleted",
+          metadata: document.metadata,
         };
 
         appState.logger("deleteDocument", nextData);
         appState.toElm.send(nextData);
+        appState.clearMetadata(document.id);
       };
     })
     .catch(err => {
       console.error("deleteDocument", err);
+      appState.clearMetadata(document.id);
     });
 };
