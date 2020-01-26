@@ -4,7 +4,6 @@ module Firestore.Internal exposing (Collection(..))
 
 import Dict exposing (Dict)
 import Firestore.Document as Document
-import Firestore.State exposing (State)
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Set exposing (Set)
@@ -34,7 +33,7 @@ type Collection a
         -- updates and a Collection with items indicating they're being saved.
         --
         { path : String
-        , docs : Dict Document.Id ( State, a )
+        , docs : Dict Document.Id ( Document.State, a )
         , writeQueue : Set Document.Id
         , decoder : Decode.Decoder a
         , encoder : a -> Encode.Value

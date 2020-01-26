@@ -9,9 +9,8 @@ module Firestore.Sub exposing
 
 import Dict exposing (Dict)
 import Firestore.Collection as Collection
-import Firestore.Document as Document exposing (Document)
+import Firestore.Document as Document exposing (Document, State(..))
 import Firestore.Internal exposing (Collection(..))
-import Firestore.State exposing (State(..))
 import Json.Decode as Decode exposing (Decoder)
 
 

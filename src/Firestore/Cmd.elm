@@ -12,9 +12,8 @@ module Firestore.Cmd exposing
     )
 
 import Firestore.Collection as Collection exposing (Collection)
-import Firestore.Document as Document
+import Firestore.Document as Document exposing (State(..))
 import Firestore.Internal exposing (Collection(..))
-import Firestore.State exposing (State(..))
 import Json.Encode as Encode
 import Set
 

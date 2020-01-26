@@ -2,10 +2,12 @@ module Firestore.Document exposing
     ( Document
     , Id
     , Path
+    , State(..)
     , decoder
+    , encodeState
+    , stateDecoder
     )
 
-import Firestore.State as State exposing (State)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
@@ -45,5 +47,73 @@ decoder =
     Decode.succeed Document
         |> required "path" Decode.string
         |> required "id" Decode.string
-        |> required "state" State.decoder
+        |> required "state" stateDecoder
         |> required "data" Decode.value
+
+
+type State
+    = New
+    | Modified
+    | Saving
+    | Cached
+    | Saved
+    | Deleting
+    | Deleted
+
+
+encodeState : State -> Encode.Value
+encodeState state =
+    Encode.string <|
+        case state of
+            New ->
+                "new"
+
+            Modified ->
+                "modified"
+
+            Saving ->
+                "saving"
+
+            Cached ->
+                "cached"
+
+            Saved ->
+                "saved"
+
+            Deleting ->
+                "deleting"
+
+            Deleted ->
+                "deleted"
+
+
+stateDecoder : Decode.Decoder State
+stateDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\val ->
+                case val of
+                    "new" ->
+                        Decode.succeed New
+
+                    "modified" ->
+                        Decode.succeed Modified
+
+                    "saving" ->
+                        Decode.succeed Saving
+
+                    "cached" ->
+                        Decode.succeed Cached
+
+                    "saved" ->
+                        Decode.succeed Saved
+
+                    "deleting" ->
+                        Decode.succeed Deleting
+
+                    "deleted" ->
+                        Decode.succeed Deleted
+
+                    _ ->
+                        Decode.fail <| "Unknown Document.State " ++ val
+            )

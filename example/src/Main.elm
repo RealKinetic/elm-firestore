@@ -8,7 +8,6 @@ import Firestore.Sub
 import Html exposing (Html)
 import Html.Events exposing (onClick)
 import Json.Decode as Decode exposing (Decoder)
-import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
 import Time exposing (Posix)
 
