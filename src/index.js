@@ -154,7 +154,7 @@ const createDocument = (appState, document) => {
   const data = {
     operation: appState.cmdNames.created,
     path: document.path,
-    id: doc.id,
+    id: document.id,
     data: document.data,
     state: initialState,
   };
@@ -174,7 +174,7 @@ const createDocument = (appState, document) => {
         const nextData = {
           operation: appState.cmdNames.updated,
           path: document.path,
-          id: doc.id,
+          id: document.id,
           data: document.data,
           state: "saved",
         };

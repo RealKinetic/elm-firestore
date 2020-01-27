@@ -23,27 +23,20 @@ type alias Path =
     String
 
 
-{-| -}
-empty :
-    (a -> Encode.Value)
-    -> Decode.Decoder a
-    -> Comparator a
-    -> Collection a
-empty encoder decoder comparator =
-    Collection
-        { path = ""
-        , docs = Dict.empty
-        , writeQueue = Set.empty
-        , decoder = decoder
-        , encoder = encoder
-        , comparator = comparator
-        }
+
+-- Collection Internals
 
 
 {-| -}
 getPath : Collection a -> String
 getPath (Collection collection) =
     collection.path
+
+
+{-| -}
+setPath : Path -> Collection a -> Collection a
+setPath newPath (Collection collection) =
+    Collection { collection | path = newPath }
 
 
 {-| -}
@@ -60,126 +53,30 @@ getWriteQueue (Collection collection) =
 
 
 {-| -}
-toList : Collection a -> List ( Document.Id, a )
-toList (Collection { docs }) =
-    Dict.foldr
-        (\id ( _, doc ) accum -> ( id, doc ) :: accum)
-        []
-        docs
-
-
-{-| -}
 encodeItem : Collection a -> a -> Encode.Value
 encodeItem (Collection collection) =
     collection.encoder
 
 
-{-| -}
-updatePath : Path -> Collection a -> Collection a
-updatePath newPath (Collection collection) =
-    Collection { collection | path = newPath }
+
+-- Build
 
 
 {-| -}
-get : Document.Id -> Collection a -> Maybe a
-get id collection =
-    collection
-        |> getWithState id
-        |> Maybe.andThen
-            (\( state, doc ) ->
-                case state of
-                    Deleted ->
-                        Nothing
-
-                    _ ->
-                        Just doc
-            )
-
-
-{-| -}
-filter : (Document.Id -> a -> Bool) -> Collection a -> List a
-filter filterFn =
-    filterMap
-        (\id doc ->
-            if filterFn id doc then
-                Just doc
-
-            else
-                Nothing
-        )
-
-
-{-| Note: Excludes New/Deleting/Deleted
--}
-filterMap : (Document.Id -> a -> Maybe b) -> Collection a -> List b
-filterMap filterFn =
-    let
-        filterFn_ id state doc =
-            case state of
-                Deleted ->
-                    -- Don't return _deleted_ items.
-                    Nothing
-
-                Deleting ->
-                    -- Don't return items being deleted.
-                    Nothing
-
-                New ->
-                    -- Don't return items new, unsaved items in a "query".
-                    Nothing
-
-                _ ->
-                    filterFn id doc
-    in
-    filterMapWithState filterFn_
-
-
-{-| Note: Excludes New/Deleting/Deleted
--}
-foldl : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
-foldl reducer =
-    foldlWithState (reducerHelper reducer)
-
-
-{-| Note: Excludes New/Deleting/Deleted
--}
-foldr : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
-foldr reducer =
-    foldrWithState (reducerHelper reducer)
-
-
-reducerHelper : (Document.Id -> a -> b -> b) -> Document.Id -> State -> a -> b -> b
-reducerHelper reducer id state doc accum =
-    case state of
-        Deleted ->
-            -- Don't fold over _deleted_ items.
-            accum
-
-        Deleting ->
-            -- Don't fold over items being deleted.
-            accum
-
-        New ->
-            -- Don't return items new, unsaved items in a "query".
-            accum
-
-        _ ->
-            reducer id doc accum
-
-
-{-| Note: Excludes New/Deleting/Deleted
--}
-map : (Document.Id -> a -> b) -> Collection a -> List b
-map fn =
-    foldr (\id doc accum -> fn id doc :: accum) []
-
-
-{-| Note: Excludes New/Deleting/Deleted
--}
-sortBy : (a -> comparable) -> Collection a -> List a
-sortBy sorter collection =
-    filterMap (\_ doc -> Just doc) collection
-        |> List.sortBy sorter
+empty :
+    (a -> Encode.Value)
+    -> Decode.Decoder a
+    -> Comparator a
+    -> Collection a
+empty encoder decoder comparator =
+    Collection
+        { path = ""
+        , docs = Dict.empty
+        , writeQueue = Set.empty
+        , decoder = decoder
+        , encoder = encoder
+        , comparator = comparator
+        }
 
 
 {-| -}
@@ -275,7 +172,144 @@ remove id (Collection collection) =
 
 
 
--- Lower Level
+-- Query
+
+
+isEmpty : Collection a -> Bool
+isEmpty (Collection { docs }) =
+    Dict.isEmpty docs
+
+
+member : Document.Id -> Collection a -> Bool
+member id (Collection { docs }) =
+    Dict.member id docs
+
+
+{-| -}
+get : Document.Id -> Collection a -> Maybe a
+get id collection =
+    collection
+        |> getWithState id
+        |> Maybe.andThen
+            (\( state, doc ) ->
+                case state of
+                    Deleted ->
+                        Nothing
+
+                    _ ->
+                        Just doc
+            )
+
+
+size : Collection a -> Int
+size (Collection { docs }) =
+    Dict.size docs
+
+
+
+-- Lists
+
+
+{-| Note: Excludes New/Deleting/Deleted
+-}
+toList : Collection a -> List ( Document.Id, a )
+toList =
+    foldr (\id doc accum -> ( id, doc ) :: accum) []
+
+
+
+-- Transform
+
+
+{-| Note: Excludes New/Deleting/Deleted
+-}
+map : (Document.Id -> a -> b) -> Collection a -> List b
+map fn =
+    foldr (\id doc accum -> fn id doc :: accum) []
+
+
+{-| Note: Excludes New/Deleting/Deleted
+-}
+foldl : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
+foldl reducer =
+    foldlWithState (reducerHelper reducer)
+
+
+{-| Note: Excludes New/Deleting/Deleted
+-}
+foldr : (Document.Id -> a -> b -> b) -> b -> Collection a -> b
+foldr reducer =
+    foldrWithState (reducerHelper reducer)
+
+
+reducerHelper : (Document.Id -> a -> b -> b) -> Document.Id -> State -> a -> b -> b
+reducerHelper reducer id state doc accum =
+    case state of
+        Deleted ->
+            -- Don't fold over _deleted_ items.
+            accum
+
+        Deleting ->
+            -- Don't fold over items being deleted.
+            accum
+
+        New ->
+            -- Don't return items new, unsaved items in a "query".
+            accum
+
+        _ ->
+            reducer id doc accum
+
+
+{-| Note: Excludes New/Deleting/Deleted
+-}
+filter : (Document.Id -> a -> Bool) -> Collection a -> List ( Document.Id, a )
+filter filterFn =
+    filterMap
+        (\id doc ->
+            if filterFn id doc then
+                Just ( id, doc )
+
+            else
+                Nothing
+        )
+
+
+{-| Note: Excludes New/Deleting/Deleted
+-}
+filterMap : (Document.Id -> a -> Maybe b) -> Collection a -> List b
+filterMap filterFn =
+    let
+        filterFn_ id state doc =
+            case state of
+                Deleted ->
+                    -- Don't return _deleted_ items.
+                    Nothing
+
+                Deleting ->
+                    -- Don't return items being deleted.
+                    Nothing
+
+                New ->
+                    -- Don't return items new, unsaved items in a "query".
+                    Nothing
+
+                _ ->
+                    filterFn id doc
+    in
+    filterMapWithState filterFn_
+
+
+{-| Note: Excludes New/Deleting/Deleted
+-}
+sortBy : (a -> comparable) -> Collection a -> List ( Document.Id, a )
+sortBy sorter collection =
+    filterMap (\id doc -> Just ( id, doc )) collection
+        |> List.sortBy (Tuple.second >> sorter)
+
+
+
+-- With State
 --
 -- Functions which allow you to operate on State,
 -- and don't have opinions on how Deleted/Deleting items are handled.
@@ -288,11 +322,8 @@ getWithState id (Collection collection) =
 
 
 toListWithState : Collection a -> List ( Document.Id, State, a )
-toListWithState (Collection { docs }) =
-    Dict.foldr
-        (\id ( state, doc ) accum -> ( id, state, doc ) :: accum)
-        []
-        docs
+toListWithState =
+    foldrWithState (\id state doc accum -> ( id, state, doc ) :: accum) []
 
 
 {-| -}
@@ -302,27 +333,32 @@ mapWithState fn =
 
 
 {-| -}
-filterWithState : (Document.Id -> a -> Bool) -> Collection a -> List a
-filterWithState fn collection =
-    collection
-        |> filterMap
-            (\id doc ->
-                if fn id doc then
-                    Just doc
+filterWithState : (Document.Id -> State -> a -> Bool) -> Collection a -> List a
+filterWithState fn =
+    filterMapWithState
+        (\id state doc ->
+            if fn id state doc then
+                Just doc
 
-                else
-                    Nothing
-            )
+            else
+                Nothing
+        )
 
 
 {-| Will NOT exlcude New/Deleted/Deleting like `Collection.filterMap`
 -}
 filterMapWithState : (Document.Id -> State -> a -> Maybe b) -> Collection a -> List b
-filterMapWithState filterFn collection =
-    collection
-        |> toListWithState
-        |> List.filterMap
-            (\( id, state, doc ) -> filterFn id state doc)
+filterMapWithState filterFn =
+    foldrWithState
+        (\id state doc accum ->
+            case filterFn id state doc of
+                Just b ->
+                    b :: accum
+
+                Nothing ->
+                    accum
+        )
+        []
 
 
 {-| Will NOT exlcude New/Deleted/Deleting like `Collection.foldl`
