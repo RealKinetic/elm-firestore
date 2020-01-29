@@ -1,6 +1,5 @@
 module Firestore.Cmd exposing
-    ( NewDocId(..)
-    , createDocument
+    ( createDocument
     , createTransientDocument
     , deleteDocument
     , encode
@@ -66,12 +65,6 @@ unwatchCollection { toFirestore, collection } =
         |> toFirestore
 
 
-{-| -}
-type NewDocId
-    = GenerateId
-    | Id String
-
-
 {-| Useful for generating documents with unique ID's,
 and/or responding to a `DocumentCreated`.
 
@@ -81,7 +74,7 @@ Otherwise use `Collection.insert` with the `batchProcess` pattern.
 createDocument :
     { toFirestore : Encode.Value -> Cmd msg
     , collection : Collection a
-    , id : NewDocId
+    , id : Document.NewId
     , data : a
     }
     -> Cmd msg
@@ -94,7 +87,7 @@ createDocument =
 createTransientDocument :
     { toFirestore : Encode.Value -> Cmd msg
     , collection : Collection a
-    , id : NewDocId
+    , id : Document.NewId
     , data : a
     }
     -> Cmd msg
@@ -107,7 +100,7 @@ createDocumentHelper :
     ->
         { toFirestore : Encode.Value -> Cmd msg
         , collection : Collection a
-        , id : NewDocId
+        , id : Document.NewId
         , data : a
         }
     -> Cmd msg
@@ -115,10 +108,10 @@ createDocumentHelper isTransient { toFirestore, collection, id, data } =
     let
         id_ =
             case id of
-                GenerateId ->
+                Document.GenerateId ->
                     ""
 
-                Id string ->
+                Document.ExistingId string ->
                     string
     in
     CreateDocument isTransient
@@ -203,7 +196,7 @@ processQueue toFirestore ((Collection collection_) as collection) =
                                 createDocument
                                     { toFirestore = toFirestore
                                     , collection = collection
-                                    , id = Id id
+                                    , id = Document.ExistingId id
                                     , data = doc
                                     }
 
@@ -277,7 +270,7 @@ encode op =
                     Encode.object
                         [ ( "path", Encode.string path )
                         , ( "id", Encode.string id )
-                        , ( "data", data )
+                        , ( "docData", data )
                         , ( "isTransient", Encode.bool isTransient )
                         ]
                 }
@@ -297,7 +290,7 @@ encode op =
                     Encode.object
                         [ ( "path", Encode.string path )
                         , ( "id", Encode.string id )
-                        , ( "data", data )
+                        , ( "docData", data )
                         ]
                 }
 

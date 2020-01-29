@@ -18,7 +18,9 @@ type alias Comparator a =
     a -> a -> Basics.Order
 
 
-{-| -}
+{-| Collection paths always have odd number of slashes
+e.g. /accounts or /accounts/{accountId}/notes
+-}
 type alias Path =
     String
 

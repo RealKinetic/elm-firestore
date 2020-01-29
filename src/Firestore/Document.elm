@@ -1,6 +1,7 @@
 module Firestore.Document exposing
     ( Document
     , Id
+    , NewId(..)
     , Path
     , State(..)
     , decoder
@@ -13,6 +14,11 @@ import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
 
 
+{-| -}
+type alias Id =
+    String
+
+
 {-| Collection paths always have odd number of slashes
 e.g. /accounts or /accounts/{accountId}/notes
 -}
@@ -20,10 +26,13 @@ type alias CollectionPath =
     String
 
 
-type alias Id =
-    String
+{-| -}
+type NewId
+    = GenerateId
+    | ExistingId Id
 
 
+{-| -}
 type alias Document =
     { path : CollectionPath
     , id : Id
@@ -32,6 +41,7 @@ type alias Document =
     }
 
 
+{-| -}
 type alias Path =
     { path : CollectionPath
     , id : Id
@@ -42,6 +52,7 @@ type alias Path =
 -------------------------------------------------------
 
 
+{-| -}
 decoder : Decoder Document
 decoder =
     Decode.succeed Document
@@ -51,6 +62,7 @@ decoder =
         |> required "data" Decode.value
 
 
+{-| -}
 type State
     = New
     | Modified
@@ -61,6 +73,7 @@ type State
     | Deleted
 
 
+{-| -}
 encodeState : State -> Encode.Value
 encodeState state =
     Encode.string <|
@@ -87,6 +100,7 @@ encodeState state =
                 "deleted"
 
 
+{-| -}
 stateDecoder : Decode.Decoder State
 stateDecoder =
     Decode.string
