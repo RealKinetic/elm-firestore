@@ -59,7 +59,7 @@ decoder =
         |> required "path" Decode.string
         |> required "id" Decode.string
         |> required "state" stateDecoder
-        |> required "data" Decode.value
+        |> required "docData" Decode.value
 
 
 {-| -}

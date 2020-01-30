@@ -98,7 +98,7 @@ const initAppState = ({
       if (!hookFn) return subData;
       return {
         ...subData,
-        docData: hookFn(subData)
+        docData: hookFn(subData) || subData
       };
     },
     onSuccess: function(event, subData) {
@@ -120,27 +120,32 @@ const initAppState = ({
  *
  */
 const appInterface = (appState: AppState): App => ({
-  setHook: params => {
-    const { path, event, op, fn } = params;
-
+  setHook: ({ path, event, op, fn }) => {
     // Validate the inputs
     const events: Hook.Event[] = ["create", "read", "update", "delete"];
     const ops: Hook.Op[] = ["formatData", "onSuccess", "onError"];
+    const pathParts = path.split("/").filter(str => str !== "");
+
+    if (pathParts.length % 2 !== 1) {
+      console.error(`Invalid CollectionPath "${path}"`);
+      console.error("Collection path must have an odd number of segments");
+      return false;
+    }
 
     if (!events.includes(event)) {
-      console.error("Invalid Hook.Event", event);
-      console.log("Valid Hook.Events are", events.join(" "));
+      console.error(`Invalid Hook.Event "${event}"`);
+      console.error("Valid Hook.Events are", events.join(" "));
       return false;
     }
 
     if (!ops.includes(op)) {
-      console.error("Invalid Hook.Op", op);
-      console.log("Valid Hook.Ops are", ops.join(" "));
+      console.error(`Invalid Hook.Op "${op}"`);
+      console.error("Valid Hook.Ops are", ops.join(" "));
       return false;
     }
 
     if (typeof fn !== "function") {
-      console.error("Hook must be a function", op);
+      console.error("Hook must be a function");
       return false;
     }
 
@@ -150,7 +155,7 @@ const appInterface = (appState: AppState): App => ({
       [path, "hooks", event, op],
       fn
     );
-    appState.logger("setHook", params);
+    appState.logger("setHook", { path, event, op, fn });
     return true;
   }
 });
@@ -252,7 +257,7 @@ const createDocument = (appState: AppState, document: CreateDocumentData) => {
   const data: SubData = appState.formatData("create", {
     operation: "DocumentCreated",
     path: document.path,
-    id: document.id,
+    id: doc.id,
     docData: document.docData,
     state: initialState
   });
@@ -271,9 +276,9 @@ const createDocument = (appState: AppState, document: CreateDocumentData) => {
     .then(() => {
       const nextData: SubData = {
         operation: "DocumentUpdated",
-        path: document.path,
-        id: document.id,
-        docData: document.docData,
+        path: data.path,
+        id: data.id,
+        docData: data.docData,
         state: "saved"
       };
 

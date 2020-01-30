@@ -71,15 +71,15 @@ export namespace Hook {
     onError: (subData: SubData, err: any) => void;
   }
 
-  export interface SetParams {
-    path: CollectionPath;
-    event: Event;
-    op: Op;
-    fn: (subData: SubData, err?: any) => any;
-  }
-
   export type Event = "create" | "read" | "update" | "delete";
   export type Op = "formatData" | "onSuccess" | "onError";
+
+  export interface SetParams {
+    path: CollectionPath;
+    event: Hook.Event;
+    op: Hook.Op;
+    fn: (subData: SubData, err?: any) => any;
+  }
 }
 
 /**

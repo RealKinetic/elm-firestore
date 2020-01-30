@@ -3,7 +3,7 @@ module Firestore.Internal exposing (Collection(..))
 {-| -}
 
 import Dict exposing (Dict)
-import Firestore.Document as Document
+import Firestore.Document as Document exposing (Document)
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Set exposing (Set)
@@ -38,4 +38,5 @@ type Collection a
         , decoder : Decode.Decoder a
         , encoder : a -> Encode.Value
         , comparator : a -> a -> Basics.Order
+        , docDecodeErrors : List ( Document, Decode.Error )
         }

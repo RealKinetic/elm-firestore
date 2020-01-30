@@ -1,7 +1,7 @@
 module Firestore.Collection exposing (..)
 
 import Dict exposing (Dict)
-import Firestore.Document as Document exposing (State(..))
+import Firestore.Document as Document exposing (Document, State(..))
 import Firestore.Internal as Internal exposing (Collection(..))
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -60,6 +60,18 @@ encodeItem (Collection collection) =
     collection.encoder
 
 
+{-| -}
+getErrors : Collection a -> List ( Document, Decode.Error )
+getErrors (Collection collection) =
+    collection.docDecodeErrors
+
+
+{-| -}
+clearErrors : Collection a -> Collection a
+clearErrors (Collection collection) =
+    Collection { collection | docDecodeErrors = [] }
+
+
 
 -- Build
 
@@ -78,6 +90,7 @@ empty encoder decoder comparator =
         , decoder = decoder
         , encoder = encoder
         , comparator = comparator
+        , docDecodeErrors = []
         }
 
 

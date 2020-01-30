@@ -99,11 +99,10 @@ processChangeHelper :
     -> Collection a
 processChangeHelper changeType doc (Collection collection) =
     let
-        decoded : Maybe a
+        decoded : Result Decode.Error a
         decoded =
             doc.data
                 |> Decode.decodeValue collection.decoder
-                |> Result.toMaybe
 
         updateUnlessDeleted : ( State, a ) -> Dict String ( State, a )
         updateUnlessDeleted item =
@@ -140,24 +139,27 @@ processChangeHelper changeType doc (Collection collection) =
 
                 Basics.GT ->
                     updateUnlessDeleted ( doc.state, newDoc )
-
-        updatedItems : Dict String ( State, a )
-        updatedItems =
-            case decoded of
-                Just new ->
-                    case ( changeType, Dict.get doc.id collection.docs ) of
-                        ( _, Just old ) ->
-                            processUpdate new old
-
-                        ( DocumentDeleted, Nothing ) ->
-                            collection.docs
-
-                        ( _, Nothing ) ->
-                            Dict.insert doc.id
-                                ( doc.state, new )
-                                collection.docs
-
-                Nothing ->
-                    collection.docs
     in
-    Collection { collection | docs = updatedItems }
+    case decoded of
+        Ok new ->
+            case ( changeType, Dict.get doc.id collection.docs ) of
+                ( _, Just old ) ->
+                    Collection { collection | docs = processUpdate new old }
+
+                ( DocumentDeleted, Nothing ) ->
+                    Collection collection
+
+                ( _, Nothing ) ->
+                    Collection
+                        { collection
+                            | docs =
+                                Dict.insert doc.id
+                                    ( doc.state, new )
+                                    collection.docs
+                        }
+
+        Err decodeError ->
+            Collection
+                { collection
+                    | docDecodeErrors = ( doc, decodeError ) :: collection.docDecodeErrors
+                }

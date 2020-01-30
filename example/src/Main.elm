@@ -1,15 +1,16 @@
 port module Main exposing (Model, main)
 
 import Browser
-import Firestore.Cmd exposing (NewDocId(..))
+import Firestore.Cmd
 import Firestore.Collection as Collection exposing (Collection)
-import Firestore.Document
+import Firestore.Document exposing (NewId(..))
 import Firestore.Sub
 import Html exposing (Html)
 import Html.Events exposing (onClick)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 import Time exposing (Posix)
+import Timestamp exposing (Timestamp(..))
 
 
 main : Program () Model Msg
@@ -62,22 +63,24 @@ init =
 
 
 type alias Note =
-    { desc : String, title : String }
+    { desc : String, title : String, createdAt : Timestamp }
 
 
 noteEncoder : Note -> Encode.Value
-noteEncoder { desc, title } =
+noteEncoder { desc, title, createdAt } =
     Encode.object
         [ ( "desc", Encode.string desc )
         , ( "title", Encode.string title )
+        , ( "createdAt", Timestamp.encode createdAt )
         ]
 
 
 noteDecoder : Decoder Note
 noteDecoder =
-    Decode.map2 Note
+    Decode.map3 Note
         (Decode.field "desc" Decode.string)
         (Decode.field "title" Decode.string)
+        (Decode.field "createdAt" Timestamp.decoder)
 
 
 
@@ -85,22 +88,24 @@ noteDecoder =
 
 
 type alias Person =
-    { name : String, email : String }
+    { name : String, email : String, createdAt : Timestamp }
 
 
 personEncoder : Person -> Encode.Value
-personEncoder { name, email } =
+personEncoder { name, email, createdAt } =
     Encode.object
         [ ( "name", Encode.string name )
         , ( "email", Encode.string email )
+        , ( "createdAt", Timestamp.encode createdAt )
         ]
 
 
 personDecoder : Decoder Person
 personDecoder =
-    Decode.map2 Person
+    Decode.map3 Person
         (Decode.field "name" Decode.string)
         (Decode.field "email" Decode.string)
+        (Decode.field "createdAt" Timestamp.decoder)
 
 
 
@@ -117,9 +122,9 @@ view model =
                     Html.div []
                         [ Html.text <| "User: " ++ userId
                         , Html.br [] []
-                        , Html.button [ onClick (NewNote (Note "foo" "bar")) ]
+                        , Html.button [ onClick (NewNote (Note "foo" "bar" Timestamp.fieldValue)) ]
                             [ Html.text "Create Note" ]
-                        , Html.button [ onClick (UpdateNote (Note "fooz" "barz")) ]
+                        , Html.button [ onClick (UpdateNote (Note "fooz" "barz" Timestamp.fieldValue)) ]
                             [ Html.text "Update Note" ]
                         , Html.div [] (Collection.map viewNote model.notes)
                         ]
@@ -148,7 +153,7 @@ type Msg
     | NewNote Note
     | UpdateNote Note
     | DeleteNote String
-    | SignedIn String
+    | SignedIn (Maybe String)
     | FirestoreMsg Firestore.Sub.Msg
     | NoOp
 
@@ -170,10 +175,13 @@ update msg model =
             , signInWithGoogle True
             )
 
-        SignedIn userId ->
+        SignedIn Nothing ->
+            ( { model | userId = Nothing }, Cmd.none )
+
+        SignedIn (Just userId) ->
             let
                 updatedNotes =
-                    Collection.updatePath
+                    Collection.setPath
                         ("/accounts/" ++ userId ++ "/notes")
                         model.notes
 
@@ -192,7 +200,7 @@ update msg model =
             , Firestore.Cmd.createDocument
                 { toFirestore = toFirestore
                 , collection = model.notes
-                , id = Id "derpity"
+                , id = GenerateId
                 , data = newNote
                 }
             )
@@ -229,10 +237,16 @@ handleFirestoreMsg : Model -> Firestore.Sub.Msg -> ( Model, Cmd Msg )
 handleFirestoreMsg model msg =
     case msg of
         Firestore.Sub.Change changeType document ->
+            let
+                newNotes =
+                    Firestore.Sub.processChange changeType document model.notes
+                        |> (\notes -> ( Debug.log "errors" (Collection.getErrors notes |> List.map (Tuple.mapSecond Decode.errorToString)), Collection.clearErrors notes ))
+                        |> Tuple.second
+            in
             ( { model
                 -- If the document.path does not match the collection.path,
                 -- we just return the collection unaltered. Cleans up nicely.
-                | notes = Firestore.Sub.processChange changeType document model.notes
+                | notes = newNotes
                 , people = Firestore.Sub.processChange changeType document model.people
               }
             , handleChange model changeType document
@@ -241,8 +255,21 @@ handleFirestoreMsg model msg =
         Firestore.Sub.Read document ->
             ( model, Cmd.none )
 
-        Firestore.Sub.Error string ->
-            ( model, Cmd.none )
+        Firestore.Sub.Error error ->
+            case error of
+                Firestore.Sub.DecodeError decodeError ->
+                    let
+                        _ =
+                            Debug.log "decode error" (Decode.errorToString decodeError)
+                    in
+                    ( model, Cmd.none )
+
+                Firestore.Sub.PlaceholderError string ->
+                    let
+                        _ =
+                            Debug.log "decode error" string
+                    in
+                    ( model, Cmd.none )
 
 
 handleChange : Model -> Firestore.Sub.ChangeType -> Firestore.Document.Document -> Cmd Msg
@@ -293,4 +320,4 @@ port fromFirestore : (Decode.Value -> msg) -> Sub msg
 port signInWithGoogle : Bool -> Cmd msg
 
 
-port userSignedIn : (String -> msg) -> Sub msg
+port userSignedIn : (Maybe String -> msg) -> Sub msg
