@@ -69,48 +69,46 @@ const initAppState = ({
   firestore,
   toElm,
   debug = false
-}: Constructor): AppState => {
-  return {
-    firestore,
-    toElm,
-    debug,
-    collections: {},
+}: Constructor): AppState => ({
+  firestore,
+  toElm,
+  debug,
+  collections: {},
 
-    // Logging Helper
-    logger: function(origin, data) {
-      if (this.debug) {
-        console.log("elm-firestore", origin, data);
-      }
-    },
-
-    // Collection State Helper
-    isWatching: function(path) {
-      return this.collections[path] && this.collections[path].isWatching;
-    },
-
-    // Hook Execution Helpers
-    // Using "Optional Chaining"
-    // https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-7.html#optional-chaining
-    formatData: function(event, subData) {
-      const hookFn = this.collections[subData.path]?.hooks?.[event]?.formatData;
-      if (!hookFn) return subData;
-      return {
-        ...subData,
-        data: hookFn(subData) || subData
-      };
-    },
-    onSuccess: function(event, subData) {
-      const hookFn = this.collections[subData.path]?.hooks?.[event]?.onSuccess;
-      if (!hookFn) return;
-      hookFn(subData);
-    },
-    onError: function(event, subData, err) {
-      const hookFn = this.collections[subData.path]?.hooks?.[event]?.onError;
-      if (!hookFn) return;
-      hookFn(subData, err);
+  // Logging Helper
+  logger: function(origin, data) {
+    if (this.debug) {
+      console.log("elm-firestore", origin, data);
     }
-  };
-};
+  },
+
+  // Collection State Helper
+  isWatching: function(path) {
+    return this.collections[path] && this.collections[path].isWatching;
+  },
+
+  // Hook Execution Helpers
+  // Using "Optional Chaining"
+  // https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-7.html#optional-chaining
+  formatData: function(event, subData) {
+    const hookFn = this.collections[subData.path]?.hooks?.[event]?.formatData;
+    if (!hookFn) return subData;
+    return {
+      ...subData,
+      data: hookFn(subData) || subData
+    };
+  },
+  onSuccess: function(event, subData) {
+    const hookFn = this.collections[subData.path]?.hooks?.[event]?.onSuccess;
+    if (!hookFn) return;
+    hookFn(subData);
+  },
+  onError: function(event, subData, err) {
+    const hookFn = this.collections[subData.path]?.hooks?.[event]?.onError;
+    if (!hookFn) return;
+    hookFn(subData, err);
+  }
+});
 
 /**
  *
