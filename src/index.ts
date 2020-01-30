@@ -425,7 +425,7 @@ function assertUnreachable(x: never): never {
 }
 
 // Set deeply nested values in objects that might not exist.
-// Overwrite existing objects if they do exist.
+// Overwrite existing values if they do exist.
 const assignDeeplyNested = (
   { ...obj }: { [key: string]: any },
   keys: string[],

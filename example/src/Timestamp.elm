@@ -29,13 +29,15 @@ decoder =
                         |> Decode.succeed
                 )
 
-        -- Since we massage the data with the formatData hook,
-        -- we need to decode the sentinel value as well,
-        -- which is sent back during the "Saving" Sub.Msg
+        -- Since we use the `formatData()` hook to help create a serverTimestamp,
+        -- we need to decode the temporary client-side sentinel value as well.
+        --
+        -- This is due to JS always notifiying us us of State.Saving change
+        -- immediately after a create/update Cmd.Msg is fired off.
         , Decode.field "_methodName" (Decode.succeed New)
 
-        -- Firebase will set the value to null if it's cached,
-        -- until it get's the timestamped version back from the server.
+        -- Firebase will set the value to temporarily null when it's cached,
+        -- until the server-fired docChange with the timestamped version arrives.
         , Decode.null New
         ]
 
