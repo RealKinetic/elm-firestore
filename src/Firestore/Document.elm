@@ -10,7 +10,6 @@ module Firestore.Document exposing
     )
 
 import Json.Decode as Decode exposing (Decoder)
-import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
 
 
@@ -55,11 +54,11 @@ type alias Path =
 {-| -}
 decoder : Decoder Document
 decoder =
-    Decode.succeed Document
-        |> required "path" Decode.string
-        |> required "id" Decode.string
-        |> required "state" stateDecoder
-        |> required "docData" Decode.value
+    Decode.map4 Document
+        (Decode.field "path" Decode.string)
+        (Decode.field "id" Decode.string)
+        (Decode.field "state" stateDecoder)
+        (Decode.field "data" Decode.value)
 
 
 {-| -}

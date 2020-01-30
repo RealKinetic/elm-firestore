@@ -60,18 +60,6 @@ encodeItem (Collection collection) =
     collection.encoder
 
 
-{-| -}
-getErrors : Collection a -> List ( Document, Decode.Error )
-getErrors (Collection collection) =
-    collection.docDecodeErrors
-
-
-{-| -}
-clearErrors : Collection a -> Collection a
-clearErrors (Collection collection) =
-    Collection { collection | docDecodeErrors = [] }
-
-
 
 -- Build
 
@@ -90,7 +78,6 @@ empty encoder decoder comparator =
         , decoder = decoder
         , encoder = encoder
         , comparator = comparator
-        , docDecodeErrors = []
         }
 
 

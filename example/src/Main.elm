@@ -190,8 +190,17 @@ update msg model =
                         { toFirestore = toFirestore
                         , collection = updatedNotes
                         }
+
+                updatedPeople =
+                    Collection.setPath
+                        ("/accounts/" ++ userId ++ "/people")
+                        model.people
             in
-            ( { model | userId = Just userId, notes = updatedNotes }
+            ( { model
+                | userId = Just userId
+                , notes = updatedNotes
+                , people = updatedPeople
+              }
             , watchNotes
             )
 
@@ -238,15 +247,24 @@ handleFirestoreMsg model msg =
     case msg of
         Firestore.Sub.Change changeType document ->
             let
-                newNotes =
-                    Firestore.Sub.processChange changeType document model.notes
-                        |> (\notes -> ( Debug.log "errors" (Collection.getErrors notes |> List.map (Tuple.mapSecond Decode.errorToString)), Collection.clearErrors notes ))
-                        |> Tuple.second
+                -- Here is how to go about handling decoding errors.
+                -- These are especially useful for debugging during schema changes
+                -- or when implementing formatData hooks.
+                _ =
+                    case Firestore.Sub.processChangeDebugger changeType document model.people of
+                        Firestore.Sub.Success a collection ->
+                            Ok <| Debug.log "note decode success" a
+
+                        Firestore.Sub.PathMismatch path ->
+                            Err <| Debug.log "Different paths" <| path.collection ++ " and " ++ path.doc
+
+                        Firestore.Sub.Fail error ->
+                            Err <| Debug.log "note decode error" (Decode.errorToString error)
             in
             ( { model
                 -- If the document.path does not match the collection.path,
                 -- we just return the collection unaltered. Cleans up nicely.
-                | notes = newNotes
+                | notes = Firestore.Sub.processChange changeType document model.notes
                 , people = Firestore.Sub.processChange changeType document model.people
               }
             , handleChange model changeType document

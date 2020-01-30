@@ -29,6 +29,11 @@ decoder =
                         |> Decode.succeed
                 )
 
+        -- Since we massage the data with the formatData hook,
+        -- we need to decode the sentinel value as well,
+        -- which is sent back during the "Saving" Sub.Msg
+        , Decode.field "_methodName" (Decode.succeed New)
+
         -- Firebase will set the value to null if it's cached,
         -- until it get's the timestamped version back from the server.
         , Decode.null New
@@ -39,7 +44,7 @@ encode : Timestamp -> Encode.Value
 encode timestamp =
     case timestamp of
         New ->
-            Encode.string "test"
+            Encode.null
 
         Existing time ->
             Encode.object

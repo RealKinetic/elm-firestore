@@ -245,60 +245,46 @@ processQueue toFirestore ((Collection collection_) as collection) =
 
 encode : Msg -> Encode.Value
 encode op =
-    let
-        helper { name, data } =
+    case op of
+        SubscribeCollection path ->
             Encode.object
-                [ ( "name", Encode.string name )
+                [ ( "name", Encode.string "SubscribeCollection" )
+                , ( "path", Encode.string path )
+                ]
+
+        UnsubscribeCollection path ->
+            Encode.object
+                [ ( "name", Encode.string "UnsubscribeCollection" )
+                , ( "path", Encode.string path )
+                ]
+
+        CreateDocument isTransient { path, id, data } ->
+            Encode.object
+                [ ( "name", Encode.string "CreateDocument" )
+                , ( "path", Encode.string path )
+                , ( "id", Encode.string id )
+                , ( "data", data )
+                , ( "isTransient", Encode.bool isTransient )
+                ]
+
+        ReadDocument { path, id } ->
+            Encode.object
+                [ ( "name", Encode.string "ReadDocument" )
+                , ( "path", Encode.string path )
+                , ( "id", Encode.string id )
+                ]
+
+        UpdateDocument { path, id, data } ->
+            Encode.object
+                [ ( "name", Encode.string "UpdateDocument" )
+                , ( "path", Encode.string path )
+                , ( "id", Encode.string id )
                 , ( "data", data )
                 ]
-    in
-    helper <|
-        case op of
-            SubscribeCollection path ->
-                { name = "SubscribeCollection"
-                , data = Encode.string path
-                }
 
-            UnsubscribeCollection path ->
-                { name = "UnsubscribeCollection"
-                , data = Encode.string path
-                }
-
-            CreateDocument isTransient { path, id, data } ->
-                { name = "CreateDocument"
-                , data =
-                    Encode.object
-                        [ ( "path", Encode.string path )
-                        , ( "id", Encode.string id )
-                        , ( "docData", data )
-                        , ( "isTransient", Encode.bool isTransient )
-                        ]
-                }
-
-            ReadDocument { path, id } ->
-                { name = "ReadDocument"
-                , data =
-                    Encode.object
-                        [ ( "path", Encode.string path )
-                        , ( "id", Encode.string id )
-                        ]
-                }
-
-            UpdateDocument { path, id, data } ->
-                { name = "UpdateDocument"
-                , data =
-                    Encode.object
-                        [ ( "path", Encode.string path )
-                        , ( "id", Encode.string id )
-                        , ( "docData", data )
-                        ]
-                }
-
-            DeleteDocument { path, id } ->
-                { name = "DeleteDocument"
-                , data =
-                    Encode.object
-                        [ ( "path", Encode.string path )
-                        , ( "id", Encode.string id )
-                        ]
-                }
+        DeleteDocument { path, id } ->
+            Encode.object
+                [ ( "name", Encode.string "DeleteDocument" )
+                , ( "path", Encode.string path )
+                , ( "id", Encode.string id )
+                ]

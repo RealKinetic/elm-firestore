@@ -1,10 +1,12 @@
 module Firestore.Sub exposing
     ( ChangeType(..)
+    , Debuggable(..)
     , Error(..)
     , Msg(..)
     , decodeMsg
     , msgDecoder
     , processChange
+    , processChangeDebugger
     )
 
 import Dict exposing (Dict)
@@ -90,16 +92,36 @@ processChange changeType doc collection =
 
     else
         processChangeHelper changeType doc collection
+            |> onlySuccess collection
+
+
+{-| This is useful debugging function. One might find it useful when going
+through a schema change.
+-}
+processChangeDebugger :
+    ChangeType
+    -> Document
+    -> Collection a
+    -> Debuggable a
+processChangeDebugger changeType doc collection =
+    if Collection.getPath collection /= doc.path then
+        PathMismatch
+            { collection = Collection.getPath collection
+            , doc = doc.path
+            }
+
+    else
+        processChangeHelper changeType doc collection
 
 
 processChangeHelper :
     ChangeType
     -> Document
     -> Collection a
-    -> Collection a
+    -> Debuggable a
 processChangeHelper changeType doc (Collection collection) =
     let
-        decoded : Result Decode.Error a
+        --decoded : Result Decode.Error a
         decoded =
             doc.data
                 |> Decode.decodeValue collection.decoder
@@ -139,27 +161,37 @@ processChangeHelper changeType doc (Collection collection) =
 
                 Basics.GT ->
                     updateUnlessDeleted ( doc.state, newDoc )
-    in
-    case decoded of
-        Ok new ->
+
+        updateDocs newDoc =
             case ( changeType, Dict.get doc.id collection.docs ) of
-                ( _, Just old ) ->
-                    Collection { collection | docs = processUpdate new old }
+                ( _, Just oldDoc ) ->
+                    processUpdate newDoc oldDoc
 
                 ( DocumentDeleted, Nothing ) ->
-                    Collection collection
+                    collection.docs
 
                 ( _, Nothing ) ->
-                    Collection
-                        { collection
-                            | docs =
-                                Dict.insert doc.id
-                                    ( doc.state, new )
-                                    collection.docs
-                        }
+                    Dict.insert doc.id ( doc.state, newDoc ) collection.docs
+    in
+    case decoded of
+        Ok newDoc ->
+            Success newDoc (Collection { collection | docs = updateDocs newDoc })
 
-        Err decodeError ->
-            Collection
-                { collection
-                    | docDecodeErrors = ( doc, decodeError ) :: collection.docDecodeErrors
-                }
+        Err decodeErr ->
+            Fail decodeErr
+
+
+type Debuggable a
+    = Success a (Collection a)
+    | Fail Decode.Error
+    | PathMismatch { collection : String, doc : String }
+
+
+onlySuccess : Collection a -> Debuggable a -> Collection a
+onlySuccess default debuggable =
+    case debuggable of
+        Success _ collection ->
+            collection
+
+        _ ->
+            default

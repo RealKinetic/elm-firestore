@@ -1,4 +1,4 @@
-import { firestore } from "firebase/app";
+import { firestore } from "firebase";
 
 /**
  *
@@ -8,7 +8,7 @@ import { firestore } from "firebase/app";
 export interface Constructor {
   firestore: firestore.Firestore;
   fromElm: any;
-  toElm: { send: (data: SubData) => void };
+  toElm: { send: (subMsg: Sub.Msg) => void };
   debug: boolean;
 }
 
@@ -19,14 +19,14 @@ export interface Constructor {
  */
 export interface AppState {
   firestore: firestore.Firestore;
-  toElm: { send: (data: SubData) => void };
+  toElm: { send: (data: Sub.Msg) => void };
   collections: { [path: string]: CollectionState };
   debug: boolean;
   logger: (origin: string, data: any) => void;
   isWatching: (path: CollectionPath) => boolean;
-  formatData: (event: Hook.Event, subData: SubData) => SubData;
-  onSuccess: (event: Hook.Event, subData: SubData) => void;
-  onError: (event: Hook.Event, subData: SubData, err: any) => void;
+  formatData: (event: Hook.Event, subMsg: Sub.Msg) => Sub.Msg;
+  onSuccess: (event: Hook.Event, subMsg: Sub.Msg) => void;
+  onError: (event: Hook.Event, subMsg: Sub.Msg, err: any) => void;
 }
 
 export interface CollectionState {
@@ -66,9 +66,9 @@ export namespace Hook {
   }
 
   export interface Ops {
-    formatData: (subData: SubData) => firestore.DocumentData;
-    onSuccess: (subData: SubData) => void;
-    onError: (subData: SubData, err: any) => void;
+    formatData: (subMsg: Sub.Msg) => firestore.DocumentData;
+    onSuccess: (subMsg: Sub.Msg) => void;
+    onError: (subMsg: Sub.Msg, err: any) => void;
   }
 
   export type Event = "create" | "read" | "update" | "delete";
@@ -78,7 +78,7 @@ export namespace Hook {
     path: CollectionPath;
     event: Hook.Event;
     op: Hook.Op;
-    fn: (subData: SubData, err?: any) => any;
+    hook: (subMsg: Sub.Msg, err?: any) => any;
   }
 }
 
@@ -105,51 +105,56 @@ export type DocState =
  *
  */
 
-// TODO Should this be called CmdMsg or SubMsg?
-// It's a Firestore.Cmd.Msg, within the context of the Elm app
-// but it's a more of a Subscription (port.subscribe) in the context of the JS
-// part of the app.
-export interface CmdMsg {
-  name: CmdName;
-  data: CmdData;
-}
+export namespace Cmd {
+  // TODO Should this be called CmdMsg or SubMsg?
+  // It's a Firestore.Cmd.Msg, within the context of the Elm app
+  // but it's a more of a Subscription (port.subscribe) in the context of the JS
+  // part of the app.
 
-export type CmdName =
-  | "SubscribeCollection"
-  | "UnsubscribeCollection"
-  | "CreateDocument"
-  | "ReadDocument"
-  | "UpdateDocument"
-  | "DeleteDocument";
+  export type Msg =
+    | SubscribeCollection
+    | UnsubscribeCollection
+    | CreateDocument
+    | ReadDocument
+    | UpdateDocument
+    | DeleteDocument;
 
-export type CmdData =
-  | CollectionPath
-  | CreateDocumentData
-  | ReadDocumentData
-  | UpdateDocumentData
-  | DeleteDocumentData;
+  export interface SubscribeCollection {
+    name: "SubscribeCollection";
+    path: CollectionPath;
+  }
 
-export interface CreateDocumentData {
-  path: CollectionPath;
-  id: DocumentId;
-  docData: firestore.DocumentData;
-  isTransient: boolean;
-}
+  export interface UnsubscribeCollection {
+    name: "UnsubscribeCollection";
+    path: CollectionPath;
+  }
 
-export interface ReadDocumentData {
-  path: CollectionPath;
-  id: DocumentId;
-}
+  export interface CreateDocument {
+    name: "CreateDocument";
+    path: CollectionPath;
+    id: DocumentId;
+    data: firestore.DocumentData;
+    isTransient: boolean;
+  }
 
-export interface UpdateDocumentData {
-  path: CollectionPath;
-  id: DocumentId;
-  docData: firestore.DocumentData;
-}
+  export interface ReadDocument {
+    name: "ReadDocument";
+    path: CollectionPath;
+    id: DocumentId;
+  }
 
-export interface DeleteDocumentData {
-  path: CollectionPath;
-  id: DocumentId;
+  export interface UpdateDocument {
+    name: "UpdateDocument";
+    path: CollectionPath;
+    id: DocumentId;
+    data: firestore.DocumentData;
+  }
+
+  export interface DeleteDocument {
+    name: "DeleteDocument";
+    path: CollectionPath;
+    id: DocumentId;
+  }
 }
 
 /**
@@ -157,17 +162,19 @@ export interface DeleteDocumentData {
  * Msgs to Elm
  *
  */
-export interface SubData {
-  operation: SubName;
-  path: CollectionPath;
-  id: DocumentId;
-  docData: firestore.DocumentData;
-  state: DocState;
-}
+export namespace Sub {
+  export interface Msg {
+    operation: Sub.Name;
+    path: CollectionPath;
+    id: DocumentId;
+    data: firestore.DocumentData;
+    state: DocState;
+  }
 
-export type SubName =
-  | "DocumentCreated"
-  | "DocumentRead"
-  | "DocumentUpdated"
-  | "DocumentDeleted"
-  | "Error";
+  export type Name =
+    | "DocumentCreated"
+    | "DocumentRead"
+    | "DocumentUpdated"
+    | "DocumentDeleted"
+    | "Error";
+}

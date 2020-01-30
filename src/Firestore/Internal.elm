@@ -38,5 +38,4 @@ type Collection a
         , decoder : Decode.Decoder a
         , encoder : a -> Encode.Value
         , comparator : a -> a -> Basics.Order
-        , docDecodeErrors : List ( Document, Decode.Error )
         }

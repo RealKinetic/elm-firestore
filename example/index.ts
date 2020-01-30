@@ -37,7 +37,7 @@ firebase.auth().onAuthStateChanged(user => {
       path: "/accounts/" + user.uid + "/notes",
       event: "create",
       op: "onSuccess",
-      fn: noteSubData => console.warn("NOTE CREATED, YAY!", noteSubData)
+      hook: noteSubData => console.log("This is an onSuccess hook, YAY!")
     });
 
     // H
@@ -45,18 +45,15 @@ firebase.auth().onAuthStateChanged(user => {
       path: "/accounts/" + user.uid + "/notes",
       event: "create",
       op: "formatData",
-      fn: ({ docData, id }) => {
-        console.log("Setting serverTimestamp on", id);
-        return fieldCreatedAt(docData);
-      }
+      hook: ({ data: docData, id }) => fieldCreatedAt(docData)
     });
 
     // This hook will throw an error due to invalid event type
     elmFirestore.setHook({
       path: "/foobarbop",
-      event: "cretez",
+      event: "this-will-throw-an-error",
       op: "onSuccess",
-      fn: thing => console.log("yay!", thing)
+      hook: thing => console.log("mmK")
     });
   } else {
     elmApp.ports.userSignedIn.send(null);
@@ -69,12 +66,10 @@ elmApp.ports.signInWithGoogle.subscribe(() => {
 });
 
 // Timestamp helpers
-
 // curried helper function
 const fieldTimestampHelper = fieldName => ({ ...obj }) => {
   // If Elm wants the server to set the timestamp.
-  if (obj[fieldName] === "test") {
-    console.log("why?", fieldName);
+  if (obj[fieldName] === null) {
     obj[fieldName] = firebase.firestore.FieldValue.serverTimestamp();
     return obj;
   } else {
