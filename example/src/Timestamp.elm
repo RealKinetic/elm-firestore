@@ -21,12 +21,11 @@ decoder : Decoder Timestamp
 decoder =
     Decode.oneOf
         [ Decode.field "seconds" Decode.int
-            |> Decode.andThen
+            |> Decode.map
                 (\seconds ->
                     (seconds * 1000)
                         |> Time.millisToPosix
                         |> Existing
-                        |> Decode.succeed
                 )
 
         -- Since we use the `formatData()` hook to help create a serverTimestamp,
@@ -50,7 +49,7 @@ encode timestamp =
 
         Existing time ->
             Encode.object
-                [ ( "seconds", Time.posixToMillis time |> Encode.int )
+                [ ( "seconds", Time.posixToMillis time // 1000 |> Encode.int )
                 , ( "nanoseconds", Encode.int 0 )
                 ]
 

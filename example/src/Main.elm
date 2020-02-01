@@ -38,7 +38,7 @@ main =
 type alias Model =
     { userId : Maybe String
     , currentTime : Posix
-    , readItem : Maybe ( Firestore.Document.Id, Note )
+    , readItem : Maybe ( Firestore.Document.Id, Firestore.Document.State, Note )
     , notes : Collection Note
     , foobars : Collection ()
     }
@@ -238,10 +238,14 @@ viewReadNote model =
             Nothing ->
                 text "Click the button to see what happens..."
 
-            Just ( id, note ) ->
-                row []
+            Just ( id, state, note ) ->
+                row [ spacing 15 ]
                     [ text "Item read: "
-                    , row [] [ text note.title, text " - ", text id ]
+                    , column [ spacing 10 ]
+                        [ text note.title
+                        , text id
+                        , text <| Firestore.Document.stateToString state
+                        ]
                     ]
         ]
 
@@ -458,7 +462,10 @@ handleFirestoreMsg model msg =
             if document.path == Collection.getPath model.notes then
                 case Collection.decodeValue model.notes document.data of
                     Ok note ->
-                        ( { model | readItem = Just ( document.id, note ) }
+                        ( { model
+                            | readItem =
+                                Just ( document.id, document.state, note )
+                          }
                         , Cmd.none
                         )
 

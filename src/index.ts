@@ -297,12 +297,12 @@ const createDocument = (appState: AppState, document: Cmd.CreateDocument) => {
  */
 const readDocument = (appState: AppState, document: Cmd.ReadDocument) => {
   // SubData creation helper needed because of onSuccess/onError
-  const toSubMsg = (docData: any): Sub.Msg => ({
+  const toSubMsg = (data: any, state: any): Sub.Msg => ({
     operation: "DocumentRead",
     path: document.path,
     id: document.id,
-    data: docData,
-    state: "saved"
+    data,
+    state
   });
 
   appState.firestore
@@ -310,15 +310,14 @@ const readDocument = (appState: AppState, document: Cmd.ReadDocument) => {
     .doc(document.id)
     .get()
     .then(doc => {
-      // TODO Will this grabbed cached items?
-      // Do we need to check for havePendingWrites?
-      const subMsg = toSubMsg(doc.data());
+      const state: DocState = doc.metadata.fromCache ? "cached" : "saved";
+      const subMsg = toSubMsg(doc.data(), state);
       appState.onSuccess("read", subMsg);
       appState.logger("readDocument", subMsg);
       appState.toElm.send(subMsg);
     })
     .catch(err => {
-      appState.onError("read", toSubMsg(null), err);
+      appState.onError("read", toSubMsg(null, "error"), err);
       console.error("readDocument", err);
     });
 };

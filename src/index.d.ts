@@ -106,11 +106,6 @@ export type DocState =
  */
 
 export namespace Cmd {
-  // TODO Should this be called CmdMsg or SubMsg?
-  // It's a Firestore.Cmd.Msg, within the context of the Elm app
-  // but it's a more of a Subscription (port.subscribe) in the context of the JS
-  // part of the app.
-
   export type Msg =
     | SubscribeCollection
     | UnsubscribeCollection
