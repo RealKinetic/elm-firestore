@@ -60,6 +60,12 @@ encodeItem (Collection collection) =
     collection.encoder
 
 
+{-| -}
+decodeValue : Collection a -> Decode.Value -> Result Decode.Error a
+decodeValue (Collection collection) =
+    Decode.decodeValue collection.decoder
+
+
 
 -- Build
 

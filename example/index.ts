@@ -37,7 +37,8 @@ firebase.auth().onAuthStateChanged(user => {
       path: "/accounts/" + user.uid + "/notes",
       event: "create",
       op: "onSuccess",
-      hook: noteSubData => console.log("This is an onSuccess hook, YAY!")
+      hook: noteSubData =>
+        console.warn("create.onSuccess hook fired for note", noteSubData.id)
     });
 
     // Timestamp setting
@@ -56,12 +57,12 @@ firebase.auth().onAuthStateChanged(user => {
     });
 
     // This hook will throw an error due to invalid event type
-    elmFirestore.setHook({
-      path: "/foobarbop",
-      event: "this-will-throw-an-error",
-      op: "onSuccess",
-      hook: thing => console.log("mmK")
-    });
+    // elmFirestore.setHook({
+    //   path: "/foobarbop",
+    //   event: "this-will-throw-an-error",
+    //   op: "onSuccess",
+    //   hook: thing => console.log("mmK")
+    // });
   } else {
     elmApp.ports.userSignedIn.send(null);
   }

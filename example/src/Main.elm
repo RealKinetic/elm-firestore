@@ -2,14 +2,12 @@ port module Main exposing (Model, main)
 
 import Browser
 import Element exposing (..)
-import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
 import Firestore.Cmd
 import Firestore.Collection as Collection exposing (Collection)
-import Firestore.Document exposing (NewId(..))
-import Firestore.Scratch exposing (foo)
+import Firestore.Document exposing (NewId(..), State(..))
 import Firestore.Sub
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
@@ -26,7 +24,7 @@ main =
         , subscriptions =
             \_ ->
                 Sub.batch
-                    [ Time.every 2000 EverySecond
+                    [ Time.every 3000 EveryFewSeconds
                     , fromFirestore (Firestore.Sub.decodeMsg >> FirestoreMsg)
                     , userSignedIn SignedIn
                     ]
@@ -42,7 +40,7 @@ type alias Model =
     , currentTime : Posix
     , readItem : Maybe ( Firestore.Document.Id, Note )
     , notes : Collection Note
-    , people : Collection Person
+    , foobars : Collection ()
     }
 
 
@@ -55,13 +53,42 @@ init =
         Collection.empty
             noteEncoder
             noteDecoder
-            (\_ _ -> Basics.GT)
-    , people =
+            versionedDocComparator
+    , foobars =
         Collection.empty
-            personEncoder
-            personDecoder
+            (\_ -> Encode.null)
+            (Decode.succeed ())
             (\_ _ -> Basics.GT)
+            |> Collection.setPath "/foobars"
     }
+
+
+
+--
+
+
+{-| Ye Olde VersionedDoc Pattern
+
+If you're updating the same doc frequently enough, you'll run into some fun
+overwrite behavior, e.g. updating a note's description on every keystroke might
+result in lost data when a "Saved" or "Cached" version of that same note
+comes back from a Firestore snapshot.
+
+This is the reason for elm-firestore's Comparator. It's useful to place a monotonically
+increasing version (or writeCount) number on your documents, and make sure EVERY
+update made on a document increases it's version number. See `updateNote` below.
+
+This ensures Firestore.Sub.processChange only updates a given Collection's document
+if a document with an equal or greater version number comes through the pipe.
+
+-}
+type alias VersionedDoc r =
+    { r | version : Int }
+
+
+versionedDocComparator : VersionedDoc r -> VersionedDoc r -> Basics.Order
+versionedDocComparator new old =
+    compare new.version old.version
 
 
 
@@ -73,60 +100,51 @@ type alias Note =
     , title : String
     , createdAt : Timestamp
     , updatedAt : Timestamp
+    , version : Int
     }
 
 
 noteEncoder : Note -> Encode.Value
-noteEncoder { desc, title, createdAt, updatedAt } =
+noteEncoder { desc, title, createdAt, updatedAt, version } =
     Encode.object
         [ ( "desc", Encode.string desc )
         , ( "title", Encode.string title )
         , ( "createdAt", Timestamp.encode createdAt )
         , ( "updatedAt", Timestamp.encode updatedAt )
+        , ( "version", Encode.int version )
         ]
 
 
 noteDecoder : Decoder Note
 noteDecoder =
-    Decode.map4 Note
+    Decode.map5 Note
         (Decode.field "desc" Decode.string)
         (Decode.field "title" Decode.string)
         (Decode.field "createdAt" Timestamp.decoder)
         (Decode.field "updatedAt" Timestamp.decoder)
+        (Decode.field "version" Decode.int)
+
+
+newNote =
+    { title = "Foo Bar "
+    , desc = "Lorem ipsum bleep bloop"
+    , createdAt = Timestamp.fieldValue
+    , updatedAt = Timestamp.fieldValue
+    , version = 1
+    }
+
+
+{-| -}
+updateNote : Note -> Note
+updateNote note =
+    { note
+        | version = note.version + 1
+        , updatedAt = Timestamp.fieldValue
+    }
 
 
 
 --
-
-
-type alias Person =
-    { name : String
-    , email : String
-    , createdAt : Timestamp
-    , updatedAt : Timestamp
-    }
-
-
-personEncoder : Person -> Encode.Value
-personEncoder { name, email, createdAt, updatedAt } =
-    Encode.object
-        [ ( "name", Encode.string name )
-        , ( "email", Encode.string email )
-        , ( "createdAt", Timestamp.encode createdAt )
-        , ( "updatedAt", Timestamp.encode updatedAt )
-        ]
-
-
-personDecoder : Decoder Person
-personDecoder =
-    Decode.map4 Person
-        (Decode.field "name" Decode.string)
-        (Decode.field "email" Decode.string)
-        (Decode.field "createdAt" Timestamp.decoder)
-        (Decode.field "updatedAt" Timestamp.decoder)
-
-
-
 -- View
 
 
@@ -137,9 +155,9 @@ view model =
         [ Element.layout [ width fill, height fill ] <|
             case model.userId of
                 Just userId ->
-                    row [ spacing 100, centerX, centerY ]
-                        [ viewNotes model
-                        , column [ spacing 40 ]
+                    row [ spacing 100, centerX ]
+                        [ el [ width (px 300) ] (viewNotes model)
+                        , column [ spacing 40, alignTop, moveDown 50 ]
                             [ text <| "User: " ++ userId
                             , br
                             , viewCreateNote
@@ -170,7 +188,7 @@ view model =
 viewNotes : Model -> Element Msg
 viewNotes model =
     if Collection.isEmpty model.notes then
-        text "Go ahead, create some notes :)"
+        text "Go ahead, create some things!"
 
     else
         column [ spacing 10 ] (Collection.mapWithState viewNote model.notes)
@@ -178,11 +196,18 @@ viewNotes model =
 
 viewCreateNote : Element Msg
 viewCreateNote =
-    Input.button
-        buttonAttrs
-        { onPress = Just Create
-        , label = text "Create"
-        }
+    row [ spacing 20 ]
+        [ Input.button
+            buttonAttrs
+            { onPress = Just Create
+            , label = text "Create"
+            }
+        , Input.button
+            buttonAttrs
+            { onPress = Just QueuedCreate
+            , label = text "Queued Creation"
+            }
+        ]
 
 
 viewReadNote : Model -> Element Msg
@@ -216,7 +241,7 @@ viewReadNote model =
             Just ( id, note ) ->
                 row []
                     [ text "Item read: "
-                    , column [] [ text note.title, text id ]
+                    , row [] [ text note.title, text " - ", text id ]
                     ]
         ]
 
@@ -225,21 +250,28 @@ viewUpdateNote : Collection Note -> Element Msg
 viewUpdateNote notes =
     case Collection.toList notes |> List.head of
         Nothing ->
-            text "No notes to update yet"
+            text "No notes to update"
 
-        Just noteData ->
-            Input.button
-                buttonAttrs
-                { onPress = Just <| Update noteData
-                , label = text "Update"
-                }
+        Just ( id, note ) ->
+            row [ spacing 20 ]
+                [ Input.button
+                    buttonAttrs
+                    { onPress = Just <| Update ( id, note )
+                    , label = text "Update"
+                    }
+                , Input.button
+                    buttonAttrs
+                    { onPress = Just <| QueuedUpdate id
+                    , label = text "Queued Update"
+                    }
+                ]
 
 
 viewDeleteNote : Collection Note -> Element Msg
 viewDeleteNote notes =
     case Collection.toList notes |> List.head of
         Nothing ->
-            text "No notes to update yet"
+            text "No notes to delete"
 
         Just ( id, _ ) ->
             Input.button
@@ -251,11 +283,16 @@ viewDeleteNote notes =
 
 viewNote : Firestore.Document.Id -> Firestore.Document.State -> Note -> Element Msg
 viewNote id state note =
-    column [ spacing 10, Border.width 1, padding 5 ]
-        [ el [ Font.size 20, Font.bold ] (text note.title)
-        , text <| "Id: " ++ id
-        , text note.desc
-        ]
+    if state == Deleted then
+        none
+
+    else
+        column [ spacing 10, Border.width 1, padding 5 ]
+            [ el [ Font.size 20, Font.bold ] (text note.title)
+            , text <| "Id: " ++ id
+            , text note.desc
+            , el [ Font.extraBold ] (text <| Firestore.Document.stateToString state)
+            ]
 
 
 buttonAttrs =
@@ -271,11 +308,13 @@ br =
 
 
 type Msg
-    = EverySecond Posix
+    = EveryFewSeconds Posix
     | SignIn
     | Create
+    | QueuedCreate
     | Read Firestore.Document.Id
     | Update ( Firestore.Document.Id, Note )
+    | QueuedUpdate Firestore.Document.Id
     | Delete Firestore.Document.Id
     | SignedIn (Maybe String)
     | FirestoreMsg Firestore.Sub.Msg
@@ -285,7 +324,7 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        EverySecond time ->
+        EveryFewSeconds time ->
             let
                 ( noteWrites, notes ) =
                     Firestore.Cmd.processQueue toFirestore model.notes
@@ -314,16 +353,10 @@ update msg model =
                         { toFirestore = toFirestore
                         , collection = updatedNotes
                         }
-
-                updatedPeople =
-                    Collection.setPath
-                        ("/accounts/" ++ userId ++ "/people")
-                        model.people
             in
             ( { model
                 | userId = Just userId
                 , notes = updatedNotes
-                , people = updatedPeople
               }
             , watchNotes
             )
@@ -334,13 +367,17 @@ update msg model =
                 { toFirestore = toFirestore
                 , collection = model.notes
                 , id = GenerateId
-                , data =
-                    { title = "Foo Bar " ++ (String.fromInt <| Collection.size model.notes)
-                    , desc = "Lorem ipsum bleep bloop"
-                    , createdAt = Timestamp.fieldValue
-                    , updatedAt = Timestamp.fieldValue
-                    }
+                , data = newNote
                 }
+            )
+
+        QueuedCreate ->
+            let
+                noteId =
+                    Collection.size model.notes |> String.fromInt
+            in
+            ( { model | notes = Collection.insert noteId newNote model.notes }
+            , Cmd.none
             )
 
         Read id ->
@@ -352,23 +389,23 @@ update msg model =
                 }
             )
 
-        Update ( id, note ) ->
-            let
-                newTitle =
-                    case String.toInt <| String.right 1 note.title of
-                        Nothing ->
-                            note.title ++ " 1"
+        QueuedUpdate id ->
+            ( { model
+                | notes =
+                    Collection.update id
+                        (\note -> updateNote { note | title = alterTitle note.title })
+                        model.notes
+              }
+            , Cmd.none
+            )
 
-                        Just num ->
-                            String.dropRight 1 note.title
-                                ++ (String.fromInt <| num + 1)
-            in
+        Update ( id, note ) ->
             ( model
             , Firestore.Cmd.updateDocument
                 { toFirestore = toFirestore
                 , collection = model.notes
                 , id = id
-                , data = { note | title = newTitle, updatedAt = Timestamp.fieldValue }
+                , data = updateNote { note | title = alterTitle note.title }
                 }
             )
 
@@ -397,7 +434,7 @@ handleFirestoreMsg model msg =
                 -- This is especially useful when encountering decoding errors,
                 -- after schema changes or when implementing formatData hooks.
                 _ =
-                    case Firestore.Sub.processChangeDebugger doc model.people of
+                    case Firestore.Sub.processChangeDebugger doc model.notes of
                         Firestore.Sub.Success collection ->
                             Debug.log "Created/Updated" doc.id
 
@@ -413,13 +450,23 @@ handleFirestoreMsg model msg =
                 -- If the document.path does not match the collection.path,
                 -- we just return the collection unaltered. Cleans up nicely.
                 | notes = Firestore.Sub.processChange doc model.notes
-                , people = Firestore.Sub.processChange doc model.people
               }
             , handleChange model changeType doc
             )
 
         Firestore.Sub.Read document ->
-            ( model, Cmd.none )
+            if document.path == Collection.getPath model.notes then
+                case Collection.decodeValue model.notes document.data of
+                    Ok note ->
+                        ( { model | readItem = Just ( document.id, note ) }
+                        , Cmd.none
+                        )
+
+                    Err err ->
+                        ( model, Cmd.none )
+
+            else
+                ( model, Cmd.none )
 
         Firestore.Sub.Error error ->
             case error of
@@ -446,9 +493,6 @@ handleChange model changeType doc =
             if isNotes model doc then
                 Cmd.none
 
-            else if isPeople model doc then
-                Cmd.none
-
             else
                 Cmd.none
 
@@ -468,9 +512,14 @@ isNotes { notes } doc =
     Collection.getPath notes == doc.path
 
 
-isPeople : Model -> Firestore.Document.Document -> Bool
-isPeople { people } doc =
-    Collection.getPath people == doc.path
+alterTitle noteTitle =
+    case String.toInt <| String.right 1 noteTitle of
+        Nothing ->
+            noteTitle ++ " 1"
+
+        Just num ->
+            String.dropRight 1 noteTitle
+                ++ (String.fromInt <| num + 1)
 
 
 

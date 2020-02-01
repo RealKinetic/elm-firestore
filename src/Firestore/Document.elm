@@ -7,6 +7,7 @@ module Firestore.Document exposing
     , decoder
     , encodeState
     , stateDecoder
+    , stateToString
     )
 
 import Json.Decode as Decode exposing (Decoder)
@@ -130,3 +131,28 @@ stateDecoder =
                     _ ->
                         Decode.fail <| "Unknown Document.State " ++ val
             )
+
+
+stateToString : State -> String
+stateToString state =
+    case state of
+        New ->
+            "New"
+
+        Modified ->
+            "Modified"
+
+        Saving ->
+            "Saving"
+
+        Cached ->
+            "Cached"
+
+        Saved ->
+            "Saved"
+
+        Deleting ->
+            "Deleting"
+
+        Deleted ->
+            "Deleted"

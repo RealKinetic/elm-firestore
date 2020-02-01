@@ -166,19 +166,21 @@ processChangeHelper doc (Collection collection) =
                 )
                 collection.docs
 
-        {- Lazy helper. Only compute this in the case that we need it.
-           If the doc.id is not found, return an unchanged collection.
-        -}
-        markItemDeleted : () -> Dict String ( State, a )
-        markItemDeleted _ =
+        updateState : State -> Dict String ( State, a )
+        updateState state =
             Dict.update doc.id
-                (Maybe.map (\( _, oldDoc ) -> ( Deleted, oldDoc )))
+                (Maybe.map (\( _, oldDoc ) -> ( state, oldDoc )))
                 collection.docs
     in
     case ( doc.state, decoded ) of
-        -- Capture all Deleted docs out of the gate.
+        {- Capture all docs Deleting/Deleted out of the gate,
+           these will fail to decode since doc.data == null.
+        -}
+        ( Deleting, _ ) ->
+            Success (Collection { collection | docs = updateState Deleting })
+
         ( Deleted, _ ) ->
-            Success (Collection { collection | docs = markItemDeleted () })
+            Success (Collection { collection | docs = updateState Deleted })
 
         ( _, Ok newDoc ) ->
             Success (Collection { collection | docs = updateDocs newDoc })
