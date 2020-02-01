@@ -379,7 +379,7 @@ const deleteDocument = (appState: AppState, document: Cmd.DeleteDocument) => {
     operation: "DocumentUpdated",
     path: document.path,
     id: document.id,
-    data: noDataNeeded as any,
+    data: noDataNeeded,
     state: "deleting"
   };
 

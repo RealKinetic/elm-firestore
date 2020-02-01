@@ -40,12 +40,19 @@ firebase.auth().onAuthStateChanged(user => {
       hook: noteSubData => console.log("This is an onSuccess hook, YAY!")
     });
 
-    // H
+    // Timestamp setting
     elmFirestore.setHook({
       path: "/accounts/" + user.uid + "/notes",
       event: "create",
       op: "formatData",
-      hook: ({ data: docData, id }) => fieldCreatedAt(docData)
+      hook: ({ data: docData, id }) => fieldTimestamps(docData)
+    });
+
+    elmFirestore.setHook({
+      path: "/accounts/" + user.uid + "/notes",
+      event: "update",
+      op: "formatData",
+      hook: ({ data: docData, id }) => fieldUpdatedAt(docData)
     });
 
     // This hook will throw an error due to invalid event type

@@ -70,6 +70,9 @@ msgDecoder =
                         Decode.map (Change DocumentDeleted) Document.decoder
 
                     "Error" ->
+                        -- TODO work on sending better errors from JS.
+                        -- Map these to Firebase errors.
+                        -- https://firebase.google.com/docs/reference/js/firebase.firestore.FirestoreError
                         Decode.map (PlaceholderError >> Error)
                             (Decode.field "message" Decode.string)
 
@@ -78,32 +81,29 @@ msgDecoder =
             )
 
 
-{-| If doc path and collection path don't match,
-then the collection is returned unchanged.
+{-| If doc path and collection path don't match, collection is returned unchanged.
 -}
 processChange :
-    ChangeType
-    -> Document
+    Document
     -> Collection a
     -> Collection a
-processChange changeType doc collection =
+processChange doc collection =
     if Collection.getPath collection /= doc.path then
         collection
 
     else
-        processChangeHelper changeType doc collection
+        processChangeHelper doc collection
             |> onlySuccess collection
 
 
-{-| This is useful debugging function. One might find it useful when going
-through a schema change.
+{-| This is especially useful when you need to see if you're encountering any
+decoding errors - common when making schema changes or using `formatData` hooks.
 -}
 processChangeDebugger :
-    ChangeType
-    -> Document
+    Document
     -> Collection a
     -> Debuggable a
-processChangeDebugger changeType doc collection =
+processChangeDebugger doc collection =
     if Collection.getPath collection /= doc.path then
         PathMismatch
             { collection = Collection.getPath collection
@@ -111,86 +111,93 @@ processChangeDebugger changeType doc collection =
             }
 
     else
-        processChangeHelper changeType doc collection
+        processChangeHelper doc collection
 
 
 processChangeHelper :
-    ChangeType
-    -> Document
+    Document
     -> Collection a
     -> Debuggable a
-processChangeHelper changeType doc (Collection collection) =
+processChangeHelper doc (Collection collection) =
     let
-        --decoded : Result Decode.Error a
+        decoded : Result Decode.Error a
         decoded =
-            doc.data
-                |> Decode.decodeValue collection.decoder
+            Decode.decodeValue collection.decoder doc.data
 
-        updateUnlessDeleted : ( State, a ) -> Dict String ( State, a )
-        updateUnlessDeleted item =
-            if doc.state == Deleted then
-                Dict.remove doc.id collection.docs
-
-            else
-                Dict.insert doc.id item collection.docs
-
-        processUpdate : a -> ( State, a ) -> Dict String ( State, a )
-        processUpdate newDoc ( oldState, oldDoc ) =
-            case collection.comparator newDoc oldDoc of
+        updateExistingDoc : a -> ( State, a ) -> ( State, a )
+        updateExistingDoc newDoc ( currentState, currentDoc ) =
+            case collection.comparator newDoc currentDoc of
+                {- Keep the currentDoc if the newDoc is an "older" version. -}
                 Basics.LT ->
-                    collection.docs
+                    ( currentState, currentDoc )
 
+                {- Handle updates for "unchanged" documents.
+                   These updates should only ever be state transitions,
+                   and never material changes in the document data itself.
+                -}
                 Basics.EQ ->
-                    let
-                        -- TODO need better comments around why this is happening
-                        --
-                        -- If op.dbState is _Saved_ set to saved.
-                        -- If op.dbState is cached, only set if oldState _is not_ Saved.
-                        state =
-                            case ( doc.state, oldState ) of
-                                ( Saved, _ ) ->
-                                    Saved
+                    case ( doc.state, currentState ) of
+                        {- The odd case where a "cached" doc could get sent
+                           AFTER a "saved" doc. Saved will take precedence.
+                        -}
+                        ( Cached, Saved ) ->
+                            ( Saved, newDoc )
 
-                                ( Cached, Saved ) ->
-                                    Saved
-
-                                ( _, _ ) ->
-                                    doc.state
-                    in
-                    updateUnlessDeleted ( state, newDoc )
+                        _ ->
+                            ( doc.state, newDoc )
 
                 Basics.GT ->
-                    updateUnlessDeleted ( doc.state, newDoc )
+                    ( doc.state, newDoc )
 
+        updateDocs : a -> Dict String ( State, a )
         updateDocs newDoc =
-            case ( changeType, Dict.get doc.id collection.docs ) of
-                ( _, Just oldDoc ) ->
-                    processUpdate newDoc oldDoc
+            Dict.update doc.id
+                (\mOldDoc ->
+                    case mOldDoc of
+                        Just oldDoc ->
+                            Just (updateExistingDoc newDoc oldDoc)
 
-                ( DocumentDeleted, Nothing ) ->
-                    collection.docs
+                        Nothing ->
+                            {- Insert doc if it doesn't exist.
+                               Note: Deleted docs are NOT inserted here,
+                               as they are captured beforehand.
+                            -}
+                            Just ( doc.state, newDoc )
+                )
+                collection.docs
 
-                ( _, Nothing ) ->
-                    Dict.insert doc.id ( doc.state, newDoc ) collection.docs
+        {- Lazy helper. Only compute this in the case that we need it.
+           If the doc.id is not found, return an unchanged collection.
+        -}
+        markItemDeleted : () -> Dict String ( State, a )
+        markItemDeleted _ =
+            Dict.update doc.id
+                (Maybe.map (\( _, oldDoc ) -> ( Deleted, oldDoc )))
+                collection.docs
     in
-    case decoded of
-        Ok newDoc ->
-            Success newDoc (Collection { collection | docs = updateDocs newDoc })
+    case ( doc.state, decoded ) of
+        -- Capture all Deleted docs out of the gate.
+        ( Deleted, _ ) ->
+            Success (Collection { collection | docs = markItemDeleted () })
 
-        Err decodeErr ->
+        ( _, Ok newDoc ) ->
+            Success (Collection { collection | docs = updateDocs newDoc })
+
+        ( _, Err decodeErr ) ->
             Fail decodeErr
 
 
+{-| -}
 type Debuggable a
-    = Success a (Collection a)
+    = Success (Collection a)
     | Fail Decode.Error
-    | PathMismatch { collection : String, doc : String }
+    | PathMismatch { collection : Collection.Path, doc : Collection.Path }
 
 
 onlySuccess : Collection a -> Debuggable a -> Collection a
 onlySuccess default debuggable =
     case debuggable of
-        Success _ collection ->
+        Success collection ->
             collection
 
         _ ->
