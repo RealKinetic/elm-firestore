@@ -342,7 +342,7 @@ const updateDocument = (appState: AppState, document: Cmd.UpdateDocument) => {
   appState.firestore
     .collection(document.path)
     .doc(document.id)
-    .set(subMsg.data) // TODO set or update? Let's think it through.
+    .set(subMsg.data)
     .then(() => {
       const nextSubMsg: Sub.Msg = {
         ...subMsg,
