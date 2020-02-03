@@ -448,7 +448,7 @@ handleFirestoreMsg model msg =
 
                         Firestore.Sub.PathMismatch path ->
                             Debug.log "Path mismatch"
-                                (path.collection ++ " : " ++ path.doc)
+                                (path.collection ++ " !== " ++ path.doc)
             in
             ( { model
                 -- If the document.path does not match the collection.path,

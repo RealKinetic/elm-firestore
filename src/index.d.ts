@@ -78,7 +78,7 @@ export namespace Hook {
     path: CollectionPath;
     event: Hook.Event;
     op: Hook.Op;
-    hook: (subMsg: Sub.Msg, err?: any) => any;
+    hook: (subMsg: Sub.Msg, err?: any) => void | firestore.DocumentData;
   }
 }
 

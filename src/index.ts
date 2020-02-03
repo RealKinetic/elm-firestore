@@ -95,7 +95,7 @@ const initAppState = ({
     if (!hookFn) return subData;
     return {
       ...subData,
-      data: hookFn(subData) || subData
+      data: hookFn(subData) || subData.data
     };
   },
   onSuccess: function(event, subData) {
@@ -212,6 +212,7 @@ const subscribeCollection = (appState: AppState, path: CollectionPath) => {
 
   // Mark function as watched, and set up unsubscription
   appState.collections[path] = {
+    ...appState.collections[path],
     isWatching: true,
     unsubscribe: function() {
       unsubscribeFromCollection();
