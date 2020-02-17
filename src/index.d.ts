@@ -9,7 +9,7 @@ export interface Constructor {
   firestore: firestore.Firestore;
   fromElm: any;
   toElm: { send: (subMsg: Sub.Msg) => void };
-  debug: boolean;
+  debug?: boolean;
 }
 
 /**
