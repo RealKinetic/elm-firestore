@@ -181,7 +181,7 @@ Javascript will notifiy Elm when the doc is "Saving",
 and Sub.processChange will update the collection accordingly.
 
 -}
-processQueue : (Encode.Value -> Cmd msg) -> Collection a -> ( Cmd msg, Collection a )
+processQueue : (Encode.Value -> Cmd msg) -> Collection a -> ( Collection a, Cmd msg )
 processQueue toFirestore ((Collection collection_) as collection) =
     let
         writeQueue =
@@ -233,10 +233,10 @@ processQueue toFirestore ((Collection collection_) as collection) =
        are being needlessly modified. (Breaks Html.Lazy)
     -}
     if List.isEmpty writeQueue then
-        ( Cmd.none, collection )
+        ( collection, Cmd.none )
 
     else
-        ( cmds, Collection { collection_ | writeQueue = Set.empty } )
+        ( Collection { collection_ | writeQueue = Set.empty }, cmds )
 
 
 
