@@ -209,6 +209,29 @@ get id collection =
             )
 
 
+{-| -}
+find :
+    (Document.Id -> State -> a -> Bool)
+    -> Collection a
+    -> Maybe ( Document.Id, State, a )
+find predicate collection =
+    foldlWithState
+        (\id state doc acc ->
+            case acc of
+                Just _ ->
+                    acc
+
+                Nothing ->
+                    if predicate id state doc then
+                        Just ( id, state, doc )
+
+                    else
+                        Nothing
+        )
+        Nothing
+        collection
+
+
 size : Collection a -> Int
 size (Collection { docs }) =
     Dict.size docs
