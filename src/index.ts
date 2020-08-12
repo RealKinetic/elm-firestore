@@ -269,7 +269,7 @@ const createDocument = (appState: AppState, document: Cmd.CreateDocument) => {
   }
 
   doc
-    .set(subMsg.data)
+    .set(subMsg.data, { merge: true })
     .then(() => {
       const nextSubMsg: Sub.Msg = {
         ...subMsg,
@@ -343,7 +343,7 @@ const updateDocument = (appState: AppState, document: Cmd.UpdateDocument) => {
   appState.firestore
     .collection(document.path)
     .doc(document.id)
-    .set(subMsg.data)
+    .set(subMsg.data, { merge: true })
     .then(() => {
       const nextSubMsg: Sub.Msg = {
         ...subMsg,
