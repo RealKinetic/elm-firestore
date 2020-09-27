@@ -6,9 +6,10 @@ import {
   DocState,
   CollectionPath,
   Cmd,
-  Sub
-} from "./index.d";
-import { firestore } from "firebase";
+  Sub,
+  callback,
+} from './index.d';
+import { firestore } from 'firebase';
 
 /**
  *
@@ -17,35 +18,36 @@ import { firestore } from "firebase";
  */
 export const init = (constructor: Constructor) => {
   const appState = initAppState(constructor);
+  const elmSubscribe: callback = constructor.fromElm.subscribe;
 
-  constructor.fromElm.subscribe((msg: Cmd.Msg) => {
-    appState.logger("new-msg", msg);
+  elmSubscribe((msg: Cmd.Msg): void => {
+    appState.logger('new-msg', msg);
     try {
       switch (msg.name) {
-        case "SubscribeCollection":
+        case 'SubscribeCollection':
           subscribeCollection(appState, (msg as Cmd.SubscribeCollection).path);
           break;
 
-        case "UnsubscribeCollection":
+        case 'UnsubscribeCollection':
           unsubscribeCollection(
             appState,
             (msg as Cmd.UnsubscribeCollection).path
           );
           break;
 
-        case "CreateDocument":
+        case 'CreateDocument':
           createDocument(appState, msg as Cmd.CreateDocument);
           break;
 
-        case "ReadDocument":
+        case 'ReadDocument':
           readDocument(appState, msg as Cmd.ReadDocument);
           break;
 
-        case "UpdateDocument":
+        case 'UpdateDocument':
           updateDocument(appState, msg as Cmd.UpdateDocument);
           break;
 
-        case "DeleteDocument":
+        case 'DeleteDocument':
           deleteDocument(appState, msg as Cmd.DeleteDocument);
           break;
 
@@ -68,7 +70,7 @@ export const init = (constructor: Constructor) => {
 const initAppState = ({
   firestore,
   toElm,
-  debug = false
+  debug = false,
 }: Constructor): AppState => ({
   firestore,
   toElm,
@@ -76,38 +78,38 @@ const initAppState = ({
   collections: {},
 
   // Logging Helper
-  logger: function(origin, data) {
+  logger: function (origin, data) {
     if (this.debug) {
-      console.log("elm-firestore", origin, data);
+      console.log('elm-firestore', origin, data);
     }
   },
 
   // Collection State Helper
-  isWatching: function(path) {
+  isWatching: function (path) {
     return this.collections[path] && this.collections[path].isWatching;
   },
 
   // Hook Execution Helpers
   // Using "Optional Chaining"
   // https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-7.html#optional-chaining
-  formatData: function(event, subData) {
+  formatData: function (event, subData) {
     const hookFn = this.collections[subData.path]?.hooks?.[event]?.formatData;
     if (!hookFn) return subData;
     return {
       ...subData,
-      data: hookFn(subData) || subData.data
+      data: hookFn(subData) || subData.data,
     };
   },
-  onSuccess: function(event, subData) {
+  onSuccess: function (event, subData) {
     const hookFn = this.collections[subData.path]?.hooks?.[event]?.onSuccess;
     if (!hookFn) return;
     hookFn(subData);
   },
-  onError: function(event, subData, err) {
+  onError: function (event, subData, err) {
     const hookFn = this.collections[subData.path]?.hooks?.[event]?.onError;
     if (!hookFn) return;
     hookFn(subData, err);
-  }
+  },
 });
 
 /**
@@ -118,42 +120,42 @@ const initAppState = ({
 const appInterface = (appState: AppState): App => ({
   setHook: ({ path, event, op, hook }) => {
     // Validate the inputs
-    const events: Hook.Event[] = ["create", "read", "update", "delete"];
-    const ops: Hook.Op[] = ["formatData", "onSuccess", "onError"];
-    const pathParts = path.split("/").filter(str => str !== "");
+    const events: Hook.Event[] = ['create', 'read', 'update', 'delete'];
+    const ops: Hook.Op[] = ['formatData', 'onSuccess', 'onError'];
+    const pathParts = path.split('/').filter(str => str !== '');
 
     if (pathParts.length % 2 !== 1) {
       console.error(`Invalid CollectionPath "${path}"`);
-      console.error("Collection path must have an odd number of segments");
+      console.error('Collection path must have an odd number of segments');
       return false;
     }
 
     if (!events.includes(event)) {
       console.error(`Invalid Hook.Event "${event}"`);
-      console.error("Valid Hook.Events are", events.join(" "));
+      console.error('Valid Hook.Events are', events.join(' '));
       return false;
     }
 
     if (!ops.includes(op)) {
       console.error(`Invalid Hook.Op "${op}"`);
-      console.error("Valid Hook.Ops are", ops.join(" "));
+      console.error('Valid Hook.Ops are', ops.join(' '));
       return false;
     }
 
-    if (typeof hook !== "function") {
-      console.error("Hook must be a function");
+    if (typeof hook !== 'function') {
+      console.error('Hook must be a function');
       return false;
     }
 
     // If validation passes
     appState.collections = assignDeeplyNested(
       appState.collections,
-      [path, "hooks", event, op],
+      [path, 'hooks', event, op],
       hook
     );
-    appState.logger("setHook", { path, event, op, hook });
+    appState.logger('setHook', { path, event, op, hook });
     return true;
-  }
+  },
 });
 
 /**
@@ -162,7 +164,7 @@ const appInterface = (appState: AppState): App => ({
  *
  */
 const subscribeCollection = (appState: AppState, path: CollectionPath) => {
-  appState.logger("subscribeCollection", path);
+  appState.logger('subscribeCollection', path);
 
   // The return value of `onSnapshot` is a function which lets us unsubscribe.
   const unsubscribeFromCollection = appState.firestore
@@ -175,18 +177,18 @@ const subscribeCollection = (appState: AppState, path: CollectionPath) => {
           .forEach(change => {
             let docState: DocState, docData: any, subName: Sub.Name;
 
-            if (change.type === "modified" || change.type === "added") {
+            if (change.type === 'modified' || change.type === 'added') {
               docState = change.doc.metadata.hasPendingWrites
-                ? "cached"
-                : "saved";
+                ? 'cached'
+                : 'saved';
               docData = change.doc.data();
-              subName = "DocumentUpdated";
-            } else if (change.type === "removed") {
-              docState = "deleted"; // No hasPendingWrites for deleted items.
+              subName = 'DocumentUpdated';
+            } else if (change.type === 'removed') {
+              docState = 'deleted'; // No hasPendingWrites for deleted items.
               docData = null;
-              subName = "DocumentDeleted";
+              subName = 'DocumentDeleted';
             } else {
-              console.error("unknown doc change type", change.type);
+              console.error('unknown doc change type', change.type);
               return;
             }
 
@@ -195,18 +197,18 @@ const subscribeCollection = (appState: AppState, path: CollectionPath) => {
               path: path,
               id: change.doc.id,
               data: docData,
-              state: docState
+              state: docState,
             };
 
-            appState.logger("docChange", {
+            appState.logger('docChange', {
               ...data,
-              changeType: change.type
+              changeType: change.type,
             });
             appState.toElm.send(data);
           });
       },
       err => {
-        console.error("docChange", err);
+        console.error('docChange', err);
       }
     );
 
@@ -214,10 +216,10 @@ const subscribeCollection = (appState: AppState, path: CollectionPath) => {
   appState.collections[path] = {
     ...appState.collections[path],
     isWatching: true,
-    unsubscribe: function() {
+    unsubscribe: function () {
       unsubscribeFromCollection();
       this.isWatching = false;
-    }
+    },
   };
 };
 
@@ -227,7 +229,7 @@ const unsubscribeCollection = (appState: AppState, path: CollectionPath) => {
 
   if (collectionState) {
     collectionState.unsubscribe();
-    appState.logger("unsubscribeCollection", path);
+    appState.logger('unsubscribeCollection', path);
   }
 };
 
@@ -240,26 +242,26 @@ const createDocument = (appState: AppState, document: Cmd.CreateDocument) => {
   const collection = appState.firestore.collection(document.path);
   let doc: firestore.DocumentReference;
 
-  if (document.id === "") {
+  if (document.id === '') {
     doc = collection.doc(); // Generate a unique ID
   } else {
     doc = collection.doc(document.id);
   }
 
   // Non-transient (persisted) documents will skip "new" and go straight to "saving".
-  const initialState = document.isTransient ? "new" : "saving";
+  const initialState = document.isTransient ? 'new' : 'saving';
 
   // Instantiate data to send to Elm's Firestore.Sub,
   // and apply any user transformations if they have a hook.
-  const subMsg: Sub.Msg = appState.formatData("create", {
-    operation: "DocumentCreated",
+  const subMsg: Sub.Msg = appState.formatData('create', {
+    operation: 'DocumentCreated',
     path: document.path,
     id: doc.id,
     data: document.data,
-    state: initialState
+    state: initialState,
   });
 
-  appState.logger("createDocument", subMsg);
+  appState.logger('createDocument', subMsg);
   appState.toElm.send(subMsg);
 
   // Return early if we don't actually want to persist to Firstore.
@@ -273,21 +275,21 @@ const createDocument = (appState: AppState, document: Cmd.CreateDocument) => {
     .then(() => {
       const nextSubMsg: Sub.Msg = {
         ...subMsg,
-        operation: "DocumentUpdated",
-        state: "saved"
+        operation: 'DocumentUpdated',
+        state: 'saved',
       };
-      appState.onSuccess("create", nextSubMsg);
+      appState.onSuccess('create', nextSubMsg);
 
       // Send Msg to elm if collection is NOT already being watched.
       // Prevents duplicate data from being sent to Elm.
       if (!appState.isWatching(document.path)) {
-        appState.logger("createDocument", nextSubMsg);
+        appState.logger('createDocument', nextSubMsg);
         appState.toElm.send(nextSubMsg);
       }
     })
     .catch(err => {
-      appState.onError("create", subMsg, err);
-      console.error("createDocument", err);
+      appState.onError('create', subMsg, err);
+      console.error('createDocument', err);
     });
 };
 
@@ -299,11 +301,11 @@ const createDocument = (appState: AppState, document: Cmd.CreateDocument) => {
 const readDocument = (appState: AppState, document: Cmd.ReadDocument) => {
   // SubData creation helper needed because of onSuccess/onError
   const toSubMsg = (data: any, state: any): Sub.Msg => ({
-    operation: "DocumentRead",
+    operation: 'DocumentRead',
     path: document.path,
     id: document.id,
     data,
-    state
+    state,
   });
 
   appState.firestore
@@ -311,15 +313,15 @@ const readDocument = (appState: AppState, document: Cmd.ReadDocument) => {
     .doc(document.id)
     .get()
     .then(doc => {
-      const state: DocState = doc.metadata.fromCache ? "cached" : "saved";
+      const state: DocState = doc.metadata.fromCache ? 'cached' : 'saved';
       const subMsg = toSubMsg(doc.data(), state);
-      appState.onSuccess("read", subMsg);
-      appState.logger("readDocument", subMsg);
+      appState.onSuccess('read', subMsg);
+      appState.logger('readDocument', subMsg);
       appState.toElm.send(subMsg);
     })
     .catch(err => {
-      appState.onError("read", toSubMsg(null, "error"), err);
-      console.error("readDocument", err);
+      appState.onError('read', toSubMsg(null, 'error'), err);
+      console.error('readDocument', err);
     });
 };
 
@@ -329,15 +331,15 @@ const readDocument = (appState: AppState, document: Cmd.ReadDocument) => {
  *
  */
 const updateDocument = (appState: AppState, document: Cmd.UpdateDocument) => {
-  const subMsg: Sub.Msg = appState.formatData("update", {
-    operation: "DocumentUpdated",
+  const subMsg: Sub.Msg = appState.formatData('update', {
+    operation: 'DocumentUpdated',
     path: document.path,
     id: document.id,
     data: document.data,
-    state: "saving"
+    state: 'saving',
   });
 
-  appState.logger("updateDocument", subMsg);
+  appState.logger('updateDocument', subMsg);
   appState.toElm.send(subMsg);
 
   appState.firestore
@@ -347,21 +349,21 @@ const updateDocument = (appState: AppState, document: Cmd.UpdateDocument) => {
     .then(() => {
       const nextSubMsg: Sub.Msg = {
         ...subMsg,
-        operation: "DocumentUpdated",
-        state: "saved"
+        operation: 'DocumentUpdated',
+        state: 'saved',
       };
-      appState.onSuccess("update", nextSubMsg);
+      appState.onSuccess('update', nextSubMsg);
 
       // Send Msg to elm if collection is NOT already being watched.
       // Prevents duplicate data from being sent to Elm.
       if (!appState.isWatching(document.path)) {
-        appState.logger("updateDocument", nextSubMsg);
+        appState.logger('updateDocument', nextSubMsg);
         appState.toElm.send(nextSubMsg);
       }
     })
     .catch(err => {
-      appState.onError("update", subMsg, err);
-      console.error("updateDocument", err);
+      appState.onError('update', subMsg, err);
+      console.error('updateDocument', err);
     });
 };
 
@@ -376,14 +378,14 @@ const deleteDocument = (appState: AppState, document: Cmd.DeleteDocument) => {
   const noDataNeeded: any = null;
 
   const subMsg: Sub.Msg = {
-    operation: "DocumentUpdated",
+    operation: 'DocumentUpdated',
     path: document.path,
     id: document.id,
     data: noDataNeeded,
-    state: "deleting"
+    state: 'deleting',
   };
 
-  appState.logger("deleteDocument", subMsg);
+  appState.logger('deleteDocument', subMsg);
   appState.toElm.send(subMsg);
 
   appState.firestore
@@ -392,24 +394,24 @@ const deleteDocument = (appState: AppState, document: Cmd.DeleteDocument) => {
     .delete()
     .then(() => {
       const nextSubMsg: Sub.Msg = {
-        operation: "DocumentDeleted",
+        operation: 'DocumentDeleted',
         path: document.path,
         id: document.id,
         data: noDataNeeded,
-        state: "deleted"
+        state: 'deleted',
       };
-      appState.onSuccess("delete", nextSubMsg);
+      appState.onSuccess('delete', nextSubMsg);
 
       // Send Msg to Elm if collection is NOT already being watched.
       // Prevents duplicate data from being sent to Elm.
       if (!appState.isWatching(document.path)) {
-        appState.logger("deleteDocument", nextSubMsg);
+        appState.logger('deleteDocument', nextSubMsg);
         appState.toElm.send(nextSubMsg);
       }
     })
     .catch(err => {
-      appState.onError("delete", subMsg, err);
-      console.error("deleteDocument", err);
+      appState.onError('delete', subMsg, err);
+      console.error('deleteDocument', err);
     });
 };
 
@@ -432,7 +434,7 @@ const assignDeeplyNested = (
   val: any
 ): any => {
   if (keys.length === 0) return obj;
-  const lastKey = keys.pop() || "";
+  const lastKey = keys.pop() || '';
   const lastObj = keys.reduce((obj, key) => (obj[key] = obj[key] || {}), obj);
   lastObj[lastKey] = val;
   return obj;

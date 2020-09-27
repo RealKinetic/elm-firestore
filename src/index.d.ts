@@ -7,10 +7,12 @@ import { firestore } from "firebase";
  */
 export interface Constructor {
   firestore: firestore.Firestore;
-  fromElm: any;
+  fromElm: { subscribe: callback };
   toElm: { send: (subMsg: Sub.Msg) => void };
   debug?: boolean;
 }
+
+export type callback = (callback: (value: any) => void) => void
 
 /**
  *

@@ -1,10 +1,10 @@
-import firebase from "firebase/app";
-import "firebase/auth";
-import "firebase/firestore";
-import * as ElmFirestore from "../src/index";
+import firebase from 'firebase/app';
+import 'firebase/auth';
+import 'firebase/firestore';
+import * as ElmFirestore from '../src/index';
 // @ts-ignore - Using parcel, which allows importing Elm files
-import { Elm } from "./src/Main.elm";
-import { firebaseConfig } from "./firebaseConfig";
+import { Elm } from './src/Main.elm';
+import firebaseConfig from './firebaseConfig';
 
 // Set up Firebase, Firestore
 firebase.initializeApp(firebaseConfig);
@@ -25,7 +25,7 @@ const elmFirestore = ElmFirestore.init({
   firestore,
   fromElm: elmApp.ports.toFirestore,
   toElm: elmApp.ports.fromFirestore,
-  debug: true
+  debug: true,
 });
 
 firebase.auth().onAuthStateChanged(user => {
@@ -34,28 +34,29 @@ firebase.auth().onAuthStateChanged(user => {
 
     // Set some hooks
     elmFirestore.setHook({
-      path: "/accounts/" + user.uid + "/notes",
-      event: "create",
-      op: "onSuccess",
+      path: '/accounts/' + user.uid + '/notes',
+      event: 'create',
+      op: 'onSuccess',
       hook: noteSubData =>
-        console.warn("create.onSuccess hook fired for note", noteSubData.id)
+        console.warn('create.onSuccess hook fired for note', noteSubData.id),
     });
 
     // Timestamp setting
     elmFirestore.setHook({
-      path: "/accounts/" + user.uid + "/notes",
-      event: "create",
-      op: "formatData",
-      hook: ({ data: docData, id }) => fieldTimestamps(docData)
+      path: '/accounts/' + user.uid + '/notes',
+      event: 'create',
+      op: 'formatData',
+      hook: ({ data: docData, id }) => fieldTimestamps(docData),
     });
 
     elmFirestore.setHook({
-      path: "/accounts/" + user.uid + "/notes",
-      event: "update",
-      op: "formatData",
-      hook: ({ data: docData, id }) => fieldUpdatedAt(docData)
+      path: '/accounts/' + user.uid + '/notes',
+      event: 'update',
+      op: 'formatData',
+      hook: ({ data: docData, id }) => fieldUpdatedAt(docData),
     });
 
+    // Example:
     // This hook will throw an error due to invalid event type
     // elmFirestore.setHook({
     //   path: "/foobarbop",
@@ -75,7 +76,7 @@ elmApp.ports.signInWithGoogle.subscribe(() => {
 
 // Timestamp helpers
 // curried helper function
-const fieldTimestampHelper = fieldName => ({ ...obj }) => {
+const fieldTimestampHelper = (fieldName: string) => ({ ...obj }) => {
   // If Elm wants the server to set the timestamp.
   if (obj[fieldName] === null) {
     obj[fieldName] = firebase.firestore.FieldValue.serverTimestamp();
@@ -85,6 +86,6 @@ const fieldTimestampHelper = fieldName => ({ ...obj }) => {
   }
 };
 
-const fieldCreatedAt = fieldTimestampHelper("createdAt");
-const fieldUpdatedAt = fieldTimestampHelper("updatedAt");
-const fieldTimestamps = obj => fieldCreatedAt(fieldUpdatedAt(obj));
+const fieldCreatedAt = fieldTimestampHelper('createdAt');
+const fieldUpdatedAt = fieldTimestampHelper('updatedAt');
+const fieldTimestamps = (obj: object) => fieldCreatedAt(fieldUpdatedAt(obj));
