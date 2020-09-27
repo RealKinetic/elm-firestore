@@ -4,18 +4,18 @@ import Json.Decode as Decode exposing (Decoder)
 
 
 {-| -}
+type alias Error =
+    { code : Code
+    , message : String
+    }
+
+
+{-| -}
 decode : Decoder Error
 decode =
     Decode.map2 Error
         (Decode.field "code" (Decode.string |> Decode.map stringToCode))
         (Decode.field "message" Decode.string)
-
-
-{-| -}
-type alias Error =
-    { code : Code
-    , message : String
-    }
 
 
 {-| Corresponds to <https://firebase.google.com/docs/reference/js/firebase.firestore?hl=en#firestoreerrorcode>

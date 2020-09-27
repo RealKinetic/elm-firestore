@@ -1,19 +1,18 @@
 module Firestore.Sub exposing
     ( ChangeType(..)
-    , Debuggable(..)
     , Error(..)
     , Msg(..)
     , decodeMsg
     , msgDecoder
     , processChange
-    , processChangeDebugger
     )
 
 import Dict exposing (Dict)
-import Firestore.Collection as Collection
 import Firestore.Document as Document exposing (Document, State(..))
+import Firestore.Error
 import Firestore.Internal exposing (Collection(..))
 import Json.Decode as Decode exposing (Decoder)
+import Json.Encode as Encode
 
 
 {-| -}
@@ -33,7 +32,7 @@ type ChangeType
 {-| -}
 type Error
     = DecodeError Decode.Error
-    | PlaceholderError String
+    | FirestoreError Firestore.Error.Error
 
 
 {-| -}
@@ -70,55 +69,18 @@ msgDecoder =
                         Decode.map (Change DocumentDeleted) Document.decoder
 
                     "Error" ->
-                        -- TODO work on sending better errors from JS.
-                        -- Map these to Firebase errors.
-                        -- https://firebase.google.com/docs/reference/js/firebase.firestore.FirestoreError
-                        Decode.map (PlaceholderError >> Error)
-                            (Decode.field "message" Decode.string)
+                        Decode.map (FirestoreError >> Error) Firestore.Error.decode
 
                     _ ->
-                        Decode.fail ("unknown-operation: " ++ opName)
+                        Decode.fail ("Unknown elm-firestore operation: " ++ opName)
             )
 
 
-{-| If doc path and collection path don't match, collection is returned unchanged.
--}
 processChange :
     Document
     -> Collection a
-    -> Collection a
-processChange doc collection =
-    if Collection.getPath collection /= doc.path then
-        collection
-
-    else
-        processChangeHelper doc collection
-            |> onlySuccess collection
-
-
-{-| This is especially useful when you need to see if you're encountering any
-decoding errors - common when making schema changes or using `formatData` hooks.
--}
-processChangeDebugger :
-    Document
-    -> Collection a
-    -> Debuggable a
-processChangeDebugger doc collection =
-    if Collection.getPath collection /= doc.path then
-        PathMismatch
-            { collection = Collection.getPath collection
-            , doc = doc.path
-            }
-
-    else
-        processChangeHelper doc collection
-
-
-processChangeHelper :
-    Document
-    -> Collection a
-    -> Debuggable a
-processChangeHelper doc (Collection collection) =
+    -> Result Decode.Error (Collection a)
+processChange doc (Collection collection) =
     let
         decoded : Result Decode.Error a
         decoded =
@@ -172,35 +134,27 @@ processChangeHelper doc (Collection collection) =
                 (Maybe.map (\( _, oldDoc ) -> ( state, oldDoc )))
                 collection.docs
     in
-    case ( doc.state, decoded ) of
-        {- Capture all docs Deleting/Deleted out of the gate,
-           these will fail to decode since doc.data == null.
-        -}
-        ( Deleting, _ ) ->
-            Success (Collection { collection | docs = updateState Deleting })
+    if collection.path /= doc.path then
+        Encode.object
+            [ ( "collectionPath", Encode.string collection.path )
+            , ( "docPath", Encode.string doc.path )
+            ]
+            |> Decode.Failure "Doc and Collection path should match"
+            |> Err
 
-        ( Deleted, _ ) ->
-            Success (Collection { collection | docs = updateState Deleted })
+    else
+        case ( doc.state, decoded ) of
+            {- Capture all docs Deleting/Deleted out of the gate,
+               these will fail to decode since doc.data == null.
+            -}
+            ( Deleting, _ ) ->
+                Ok (Collection { collection | docs = updateState Deleting })
 
-        ( _, Ok newDoc ) ->
-            Success (Collection { collection | docs = updateDocs newDoc })
+            ( Deleted, _ ) ->
+                Ok (Collection { collection | docs = updateState Deleted })
 
-        ( _, Err decodeErr ) ->
-            Fail decodeErr
+            ( _, Ok newDoc ) ->
+                Ok (Collection { collection | docs = updateDocs newDoc })
 
-
-{-| -}
-type Debuggable a
-    = Success (Collection a)
-    | Fail Decode.Error
-    | PathMismatch { collection : Collection.Path, doc : Collection.Path }
-
-
-onlySuccess : Collection a -> Debuggable a -> Collection a
-onlySuccess default debuggable =
-    case debuggable of
-        Success collection ->
-            collection
-
-        _ ->
-            default
+            ( _, Err decodeErr ) ->
+                Err decodeErr

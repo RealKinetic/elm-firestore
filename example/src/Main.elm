@@ -330,7 +330,7 @@ update msg model =
     case msg of
         EveryFewSeconds time ->
             let
-                ( noteWrites, notes ) =
+                ( notes, noteWrites ) =
                     Firestore.Cmd.processQueue toFirestore model.notes
             in
             ( { model | currentTime = time, notes = notes }
@@ -434,28 +434,22 @@ handleFirestoreMsg model msg =
     case msg of
         Firestore.Sub.Change changeType doc ->
             let
-                -- Here's a nice helper function for debugging.
-                -- This is especially useful when encountering decoding errors,
-                -- after schema changes or when implementing formatData hooks.
-                _ =
-                    case Firestore.Sub.processChangeDebugger doc model.notes of
-                        Firestore.Sub.Success collection ->
-                            Debug.log "Created/Updated" doc.id
-
-                        Firestore.Sub.Fail decodeError ->
-                            Debug.log "Decode Failure"
-                                (Decode.errorToString decodeError)
-
-                        Firestore.Sub.PathMismatch path ->
-                            Debug.log "Path mismatch"
-                                (path.collection ++ " !== " ++ path.doc)
+                newNotesCollection =
+                    Firestore.Sub.processChange doc model.notes
             in
             ( { model
-                -- If the document.path does not match the collection.path,
-                -- we just return the collection unaltered. Cleans up nicely.
-                | notes = Firestore.Sub.processChange doc model.notes
+                | notes = newNotesCollection |> Result.withDefault model.notes
               }
-            , handleChange model changeType doc
+            , Cmd.batch
+                [ handleChange model changeType doc
+                , case newNotesCollection of
+                    Err decodeErr ->
+                        -- Log error
+                        Cmd.none
+
+                    Ok _ ->
+                        Cmd.none
+                ]
             )
 
         Firestore.Sub.Read document ->
@@ -484,10 +478,10 @@ handleFirestoreMsg model msg =
                     in
                     ( model, Cmd.none )
 
-                Firestore.Sub.PlaceholderError string ->
+                Firestore.Sub.FirestoreError firestoreError ->
                     let
                         _ =
-                            Debug.log "decode error" string
+                            Debug.log "firestore error" firestoreError
                     in
                     ( model, Cmd.none )
 
