@@ -11,12 +11,12 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "firebase": "^7.14.6"
+    "firebase": "7.21.1"
   },
   "devDependencies": {
-    "elm-hot": "^1.1.4",
-    "node-elm-compiler": "^5.0.4",
-    "parcel": "^1.12.4",
+    "elm-hot": "1.1.4",
+    "node-elm-compiler": "5.0.4",
+    "parcel": "1.12.4",
     "typescript": "3.9.3"
   }
 }
