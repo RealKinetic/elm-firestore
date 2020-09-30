@@ -60,7 +60,7 @@ unwatchCollection :
     }
     -> Cmd msg
 unwatchCollection { toFirestore, collection } =
-    SubscribeCollection (Collection.getPath collection)
+    UnsubscribeCollection (Collection.getPath collection)
         |> encode
         |> toFirestore
 
