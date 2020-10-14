@@ -8,7 +8,7 @@ import {
   Cmd,
   Sub,
   callback,
-} from './index.d';
+} from './types';
 import { firestore } from 'firebase';
 
 /**
