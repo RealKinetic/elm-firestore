@@ -5,6 +5,7 @@ module Firestore.Sub exposing
     , decodeMsg
     , msgDecoder
     , processChange
+    , processChangeList
     )
 
 import Dict exposing (Dict)
@@ -74,6 +75,87 @@ msgDecoder =
                     _ ->
                         Decode.fail ("Unknown elm-firestore operation: " ++ opName)
             )
+
+
+processChangeList :
+    ( String, List Document )
+    -> Collection a
+    -> ( List Decode.Error, Collection a )
+processChangeList ( collectionPath, docs ) ((Collection collection) as opaqueCollection) =
+    let
+        updateExistingDoc : ( State, a ) -> ( State, a ) -> ( State, a )
+        updateExistingDoc ( newState, newDoc ) ( currentState, currentDoc ) =
+            if newState == Deleting || newState == Deleted then
+                ( newState, currentDoc )
+
+            else
+                case collection.comparator newDoc currentDoc of
+                    {- Keep the currentDoc if the newDoc is an "older" version. -}
+                    Basics.LT ->
+                        ( currentState, currentDoc )
+
+                    {- Handle updates for "unchanged" documents.
+                       These updates should only ever be state transitions,
+                       and never material changes in the document data itself.
+                    -}
+                    Basics.EQ ->
+                        case ( newState, currentState ) of
+                            {- The odd case where a "cached" doc could get sent
+                               AFTER a "saved" doc. Saved will take precedence.
+                            -}
+                            ( Cached, Saved ) ->
+                                ( Saved, newDoc )
+
+                            _ ->
+                                ( newState, newDoc )
+
+                    Basics.GT ->
+                        ( newState, newDoc )
+
+        updateDoc : ( State, a ) -> Maybe ( State, a ) -> Maybe ( State, a )
+        updateDoc ( newState, newDoc ) mOldDoc =
+            case mOldDoc of
+                Just ( oldState, oldDoc ) ->
+                    Just (updateExistingDoc ( newState, newDoc ) ( oldState, oldDoc ))
+
+                Nothing ->
+                    {- Insert doc if it doesn't exist.
+                       Note: Deleted docs are NOT inserted here,
+                       as they are captured beforehand.
+                    -}
+                    Just ( newState, newDoc )
+    in
+    if collection.path /= collectionPath then
+        ( [ Encode.object
+                [ ( "collectionPath", Encode.string collection.path )
+                , ( "docPath", Encode.string collectionPath )
+                ]
+                |> Decode.Failure "Doc and Collection path should match"
+          ]
+        , opaqueCollection
+        )
+
+    else if List.isEmpty docs then
+        ( [], opaqueCollection )
+
+    else
+        docs
+            |> List.foldl
+                (\doc ( errors, docDict ) ->
+                    case Decode.decodeValue collection.decoder doc.data of
+                        Err newDocDecodeErr ->
+                            ( newDocDecodeErr :: errors, docDict )
+
+                        Ok newDocDecoded ->
+                            ( errors
+                            , Dict.update doc.id
+                                (updateDoc ( doc.state, newDocDecoded ))
+                                collection.docs
+                            )
+                )
+                ( [], Dict.empty )
+            |> Tuple.mapSecond
+                (\newDocs -> Collection { collection | docs = newDocs })
 
 
 processChange :
