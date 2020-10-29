@@ -9,7 +9,7 @@ import {
   Sub,
   callback,
 } from './types';
-import { firestore } from 'firebase';
+import firebase from 'firebase';
 
 /**
  *
@@ -33,6 +33,10 @@ export const init = (constructor: Constructor) => {
             appState,
             (msg as Cmd.UnsubscribeCollection).path
           );
+          break;
+
+        case 'ReadCollection':
+          readCollection(appState, msg as Cmd.ReadCollection);
           break;
 
         case 'CreateDocument':
@@ -240,7 +244,7 @@ const unsubscribeCollection = (appState: AppState, path: CollectionPath) => {
  */
 const createDocument = (appState: AppState, document: Cmd.CreateDocument) => {
   const collection = appState.firestore.collection(document.path);
-  let doc: firestore.DocumentReference;
+  let doc: firebase.firestore.DocumentReference;
 
   if (document.id === '') {
     doc = collection.doc(); // Generate a unique ID
@@ -322,6 +326,36 @@ const readDocument = (appState: AppState, document: Cmd.ReadDocument) => {
     .catch(err => {
       appState.onError('read', toSubMsg(null, 'error'), err);
       console.error('readDocument', err);
+    });
+};
+
+const readCollection = (appState: AppState, cmd: Cmd.ReadCollection) => {
+  const ref: firebase.firestore.Query<firebase.firestore.DocumentData> = appState.firestore.collection(
+    cmd.path
+  );
+  const refWithQuery = cmd.queries.reduce(
+    (newRef, [field, comparator, val]) => newRef.where(field, comparator, val),
+    ref
+  );
+
+  refWithQuery
+    .get()
+    .then(snapshot => {
+      snapshot.docs.forEach(doc => {
+        const data: Sub.Msg = {
+          operation: 'DocumentUpdated',
+          path: cmd.path,
+          id: doc.id,
+          data: doc.data(),
+          state: 'saved',
+        };
+
+        appState.logger('docChange', { ...data });
+        appState.toElm.send(data);
+      });
+    })
+    .catch(err => {
+      console.error('docChange', err);
     });
 };
 
