@@ -4,6 +4,7 @@ module Firestore.Cmd exposing
     , deleteDocument
     , encode
     , processQueue
+    , readCollection
     , readDocument
     , unwatchCollection
     , updateDocument
