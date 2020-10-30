@@ -25,7 +25,7 @@ type Msg
 
 
 type alias CollectionDocChanges =
-    { collectionPath : Collection.Path
+    { path : Collection.Path
     , snapshotCount : Int
     , docs : List Document
     }
@@ -98,7 +98,7 @@ processChanges :
     CollectionDocChanges
     -> Collection a
     -> ( Collection a, List Decode.Error )
-processChanges { collectionPath, docs, snapshotCount } ((Collection collection) as opaqueCollection) =
+processChanges { path, docs, snapshotCount } ((Collection collection) as opaqueCollection) =
     let
         updateExistingDoc : ( State, a ) -> ( State, a ) -> ( State, a )
         updateExistingDoc ( newState, newDoc ) ( currentState, currentDoc ) =
@@ -142,11 +142,11 @@ processChanges { collectionPath, docs, snapshotCount } ((Collection collection) 
                     -}
                     Just newDoc
     in
-    if collection.path /= collectionPath then
+    if collection.path /= path then
         ( opaqueCollection
         , [ Encode.object
                 [ ( "collectionPath", Encode.string collection.path )
-                , ( "docPath", Encode.string collectionPath )
+                , ( "docPath", Encode.string path )
                 ]
                 |> Decode.Failure "Doc and Collection path should match"
           ]
