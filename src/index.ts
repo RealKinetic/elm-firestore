@@ -258,8 +258,8 @@ const readCollection = (appState: AppState, cmd: Cmd.ReadCollection) => {
     path
   );
   const refWithQuery = cmd.queries.reduce(
-    (newRef, { queryType, field, whereFilterOp, val }) =>
-      newRef[queryType](field, whereFilterOp, val),
+    (newRef, { queryType, field, whereFilterOp, value }) =>
+      newRef[queryType](field, whereFilterOp, value),
     collectionRef
   );
 

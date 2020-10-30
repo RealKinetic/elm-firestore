@@ -131,7 +131,7 @@ export namespace Cmd {
     queryType: 'where';
     field: string;
     whereFilterOp: firebase.firestore.WhereFilterOp;
-    val: string;
+    value: string;
   };
 
   export interface SubscribeCollection {
