@@ -1,4 +1,4 @@
-import { firestore } from "firebase";
+import firebase from 'firebase';
 
 /**
  *
@@ -6,13 +6,13 @@ import { firestore } from "firebase";
  *
  */
 export interface Constructor {
-  firestore: firestore.Firestore;
+  firestore: firebase.firestore.Firestore;
   fromElm: { subscribe: callback };
   toElm: { send: (subMsg: Sub.Msg) => void };
   debug?: boolean;
 }
 
-export type callback = (callback: (value: any) => void) => void
+export type callback = (callback: (value: any) => void) => void;
 
 /**
  *
@@ -20,7 +20,7 @@ export type callback = (callback: (value: any) => void) => void
  *
  */
 export interface AppState {
-  firestore: firestore.Firestore;
+  firestore: firebase.firestore.Firestore;
   toElm: { send: (data: Sub.Msg) => void };
   collections: { [path: string]: CollectionState };
   debug: boolean;
@@ -68,19 +68,22 @@ export namespace Hook {
   }
 
   export interface Ops {
-    formatData: (subMsg: Sub.Msg) => firestore.DocumentData;
+    formatData: (subMsg: Sub.Msg) => firebase.firestore.DocumentData;
     onSuccess: (subMsg: Sub.Msg) => void;
     onError: (subMsg: Sub.Msg, err: any) => void;
   }
 
-  export type Event = "create" | "read" | "update" | "delete";
-  export type Op = "formatData" | "onSuccess" | "onError";
+  export type Event = 'create' | 'read' | 'update' | 'delete';
+  export type Op = 'formatData' | 'onSuccess' | 'onError';
 
   export interface SetParams {
     path: CollectionPath;
     event: Hook.Event;
     op: Hook.Op;
-    hook: (subMsg: Sub.Msg, err?: any) => void | firestore.DocumentData;
+    hook: (
+      subMsg: Sub.Msg,
+      err?: any
+    ) => void | firebase.firestore.DocumentData;
   }
 }
 
@@ -94,12 +97,12 @@ export type CollectionPath = string;
 export type DocumentId = string;
 
 export type DocState =
-  | "new"
-  | "cached"
-  | "saving"
-  | "saved"
-  | "deleting"
-  | "deleted";
+  | 'new'
+  | 'cached'
+  | 'saving'
+  | 'saved'
+  | 'deleting'
+  | 'deleted';
 
 /**
  *
@@ -111,44 +114,53 @@ export namespace Cmd {
   export type Msg =
     | SubscribeCollection
     | UnsubscribeCollection
+    | ReadCollection
     | CreateDocument
     | ReadDocument
     | UpdateDocument
     | DeleteDocument;
 
+  export type Query = [string, firebase.firestore.WhereFilterOp, string];
+
   export interface SubscribeCollection {
-    name: "SubscribeCollection";
+    name: 'SubscribeCollection';
     path: CollectionPath;
   }
 
   export interface UnsubscribeCollection {
-    name: "UnsubscribeCollection";
+    name: 'UnsubscribeCollection';
     path: CollectionPath;
   }
 
   export interface CreateDocument {
-    name: "CreateDocument";
+    name: 'CreateDocument';
     path: CollectionPath;
     id: DocumentId;
-    data: firestore.DocumentData;
+    data: firebase.firestore.DocumentData;
     isTransient: boolean;
   }
 
   export interface ReadDocument {
-    name: "ReadDocument";
+    name: 'ReadDocument';
     path: CollectionPath;
     id: DocumentId;
+  }
+
+  export interface ReadCollection {
+    name: 'ReadCollection';
+    path: CollectionPath;
+    queries: Query[];
   }
 
   export interface UpdateDocument {
-    name: "UpdateDocument";
+    name: 'UpdateDocument';
     path: CollectionPath;
     id: DocumentId;
-    data: firestore.DocumentData;
+    data: firebase.firestore.DocumentData;
   }
 
   export interface DeleteDocument {
-    name: "DeleteDocument";
+    name: 'DeleteDocument';
     path: CollectionPath;
     id: DocumentId;
   }
@@ -160,18 +172,30 @@ export namespace Cmd {
  *
  */
 export namespace Sub {
-  export interface Msg {
-    operation: Sub.Name;
+  export interface Doc {
     path: CollectionPath;
     id: DocumentId;
-    data: firestore.DocumentData;
     state: DocState;
+    data: firebase.firestore.DocumentData;
   }
 
-  export type Name =
-    | "DocumentCreated"
-    | "DocumentRead"
-    | "DocumentUpdated"
-    | "DocumentDeleted"
-    | "Error";
+  export type DocumentCreated = { operation: 'DocumentCreated'; data: Doc };
+  export type DocumentRead = { operation: 'DocumentRead'; data: Doc };
+  export type DocumentDeleted = { operation: 'DocumentDeleted'; data: Doc };
+  export type CollectionUpdated = {
+    operation: 'CollectionUpdated';
+    path: CollectionPath;
+    docs: Doc[];
+  };
+
+  export type Error = {
+    operation: 'Error';
+    data: firebase.firestore.FirestoreError;
+  };
+
+  export type Msg =
+    | DocumentCreated
+    | DocumentRead
+    | DocumentDeleted
+    | CollectionUpdated;
 }
