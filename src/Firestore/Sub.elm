@@ -17,11 +17,25 @@ import Json.Encode as Encode
 
 {-| -}
 type Msg
-    = CollectionUpdated Collection.Path (List Document) -- TODO Alter created/deleted in CollectionUpdated too
+    = CollectionUpdated CollectionDocChanges -- TODO Alter created/deleted in CollectionChanged too
     | DocumentCreated Document
-    | DocumentDeleted Document
+    | DocumentDeleted Document.Id
     | DocumentRead Document
     | Error Error
+
+
+type alias CollectionDocChanges =
+    { collectionPath : Collection.Path
+    , snapshotCount : Int
+    , docs : List Document
+    }
+
+
+decodeCollectionChange =
+    Decode.map3 CollectionDocChanges
+        (Decode.field "path" Decode.string)
+        (Decode.field "snapshotCount" Decode.int)
+        (Decode.field "docs" <| Decode.list Document.decoder)
 
 
 {-| -}
@@ -56,9 +70,8 @@ msgDecoder =
             (\opName ->
                 case opName of
                     "CollectionUpdated" ->
-                        Decode.map2 CollectionUpdated
-                            (Decode.field "path" Decode.string)
-                            (dataField <| Decode.list Document.decoder)
+                        Decode.map CollectionUpdated
+                            (dataField decodeCollectionChange)
 
                     "DocumentCreated" ->
                         Decode.map DocumentCreated
@@ -70,7 +83,7 @@ msgDecoder =
 
                     "DocumentDeleted" ->
                         Decode.map DocumentDeleted
-                            (dataField Document.decoder)
+                            (dataField Decode.string)
 
                     "Error" ->
                         Decode.map (FirestoreError >> Error)
@@ -82,11 +95,10 @@ msgDecoder =
 
 
 processChanges :
-    String
-    -> List Document
+    CollectionDocChanges
     -> Collection a
     -> ( Collection a, List Decode.Error )
-processChanges collectionPath docs ((Collection collection) as opaqueCollection) =
+processChanges { collectionPath, docs, snapshotCount } ((Collection collection) as opaqueCollection) =
     let
         updateExistingDoc : ( State, a ) -> ( State, a ) -> ( State, a )
         updateExistingDoc ( newState, newDoc ) ( currentState, currentDoc ) =
@@ -157,4 +169,10 @@ processChanges collectionPath docs ((Collection collection) as opaqueCollection)
                 )
                 ( collection.docs, [] )
             |> Tuple.mapFirst
-                (\newDocs -> Collection { collection | docs = newDocs })
+                (\newDocs ->
+                    Collection
+                        { collection
+                            | docs = newDocs
+                            , snapshotCount = snapshotCount
+                        }
+                )

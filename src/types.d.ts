@@ -26,15 +26,22 @@ export interface AppState {
   debug: boolean;
   logger: (origin: string, data: any) => void;
   isWatching: (path: CollectionPath) => boolean;
-  formatData: (event: Hook.Event, subMsg: Sub.Msg) => Sub.Msg;
-  onSuccess: (event: Hook.Event, subMsg: Sub.Msg) => void;
-  onError: (event: Hook.Event, subMsg: Sub.Msg, err: any) => void;
+  getSnapshotCount: (path: CollectionPath) => number;
+  incrementSnapshotCount: (path: CollectionPath) => number;
+  formatData: (
+    event: Hook.Event,
+    path: CollectionPath,
+    doc: Sub.Doc
+  ) => Sub.Doc;
+  onSuccess: (event: Hook.Event, subMsg: Sub.Doc) => void;
+  onError: (event: Hook.Event, subMsg: Sub.Doc, err: any) => void;
 }
 
 export interface CollectionState {
   isWatching: boolean;
   hooks?: Hook.Hooks;
   unsubscribe: () => void;
+  snapshotCount: number;
 }
 
 /**
@@ -68,9 +75,9 @@ export namespace Hook {
   }
 
   export interface Ops {
-    formatData: (subMsg: Sub.Msg) => firebase.firestore.DocumentData;
-    onSuccess: (subMsg: Sub.Msg) => void;
-    onError: (subMsg: Sub.Msg, err: any) => void;
+    formatData: (subMsg: Sub.Doc) => Sub.Doc;
+    onSuccess: (subMsg: Sub.Doc) => void;
+    onError: (subMsg: Sub.Doc, err: any) => void;
   }
 
   export type Event = 'create' | 'read' | 'update' | 'delete';
@@ -120,7 +127,12 @@ export namespace Cmd {
     | UpdateDocument
     | DeleteDocument;
 
-  export type Query = [string, firebase.firestore.WhereFilterOp, string];
+  export type WhereQuery = {
+    queryType: 'where';
+    field: string;
+    whereFilterOp: firebase.firestore.WhereFilterOp;
+    val: string;
+  };
 
   export interface SubscribeCollection {
     name: 'SubscribeCollection';
@@ -130,6 +142,12 @@ export namespace Cmd {
   export interface UnsubscribeCollection {
     name: 'UnsubscribeCollection';
     path: CollectionPath;
+  }
+
+  export interface ReadCollection {
+    name: 'ReadCollection';
+    path: CollectionPath;
+    queries: WhereQuery[];
   }
 
   export interface CreateDocument {
@@ -144,12 +162,6 @@ export namespace Cmd {
     name: 'ReadDocument';
     path: CollectionPath;
     id: DocumentId;
-  }
-
-  export interface ReadCollection {
-    name: 'ReadCollection';
-    path: CollectionPath;
-    queries: Query[];
   }
 
   export interface UpdateDocument {
@@ -181,11 +193,13 @@ export namespace Sub {
 
   export type DocumentCreated = { operation: 'DocumentCreated'; data: Doc };
   export type DocumentRead = { operation: 'DocumentRead'; data: Doc };
-  export type DocumentDeleted = { operation: 'DocumentDeleted'; data: Doc };
+  export type DocumentDeleted = {
+    operation: 'DocumentDeleted';
+    data: DocumentId;
+  };
   export type CollectionUpdated = {
     operation: 'CollectionUpdated';
-    path: CollectionPath;
-    docs: Doc[];
+    data: { path: CollectionPath; docs: Doc[]; snapshotCount: number };
   };
 
   export type Error = {
