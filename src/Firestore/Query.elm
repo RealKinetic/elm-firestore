@@ -4,13 +4,13 @@ import Json.Encode as Encode
 
 
 type Query
-    = Where ( String, WhereFilterOp, Encode.Value )
+    = Where String WhereFilterOp Encode.Value
 
 
 encode : Query -> Encode.Value
 encode query =
     case query of
-        Where ( field, whereFilterOp, value ) ->
+        Where field whereFilterOp value ->
             Encode.object
                 [ ( "queryType", Encode.string "where" )
                 , ( "field", Encode.string field )
