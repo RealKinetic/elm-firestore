@@ -1,4 +1,4 @@
-module Firestore.Query exposing (Query, WhereFilterOp(..), encode)
+module Firestore.Query exposing (Query(..), WhereFilterOp(..), encode)
 
 import Json.Encode as Encode
 
