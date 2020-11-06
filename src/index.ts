@@ -377,7 +377,7 @@ const updateDocument = (appState: AppState, updatedDoc: Cmd.UpdateDocument) => {
     data: updatedDoc.data,
     state: 'saving',
   });
-  appState.logger('DocumentUpdated', docBeingSaved);
+  appState.logger('update', docBeingSaved);
 
   appState.toElm.send({
     operation: 'Change',
@@ -395,7 +395,7 @@ const updateDocument = (appState: AppState, updatedDoc: Cmd.UpdateDocument) => {
       // Send Msg to elm if collection is NOT already being watched.
       // Prevents duplicate data from being sent to Elm.
       if (!appState.isWatching(path)) {
-        appState.logger('DocumentUpdate', savedDoc);
+        appState.logger('update', savedDoc);
         appState.toElm.send({
           operation: 'Change',
           data: { path, docs: [savedDoc] },

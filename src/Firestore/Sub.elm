@@ -1,5 +1,6 @@
 module Firestore.Sub exposing
-    ( Error(..)
+    ( DocChanges
+    , Error(..)
     , Msg(..)
     , decodeMsg
     , msgDecoder
