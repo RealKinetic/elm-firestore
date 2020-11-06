@@ -26,8 +26,6 @@ export interface AppState {
   debug: boolean;
   logger: (origin: string, data: any) => void;
   isWatching: (path: CollectionPath) => boolean;
-  getSnapshotCount: (path: CollectionPath) => number;
-  incrementSnapshotCount: (path: CollectionPath) => number;
   formatData: (
     event: Hook.Event,
     path: CollectionPath,
@@ -110,6 +108,7 @@ export type DocState =
   | 'saved'
   | 'deleting'
   | 'deleted';
+// TODO There be an error state too.
 
 /**
  *
@@ -191,25 +190,16 @@ export namespace Sub {
     data: firebase.firestore.DocumentData;
   }
 
-  export type DocumentCreated = { operation: 'DocumentCreated'; data: Doc };
-  export type DocumentRead = { operation: 'DocumentRead'; data: Doc };
-  export type DocumentDeleted = {
-    operation: 'DocumentDeleted';
-    data: DocumentId;
-  };
-  export type CollectionUpdated = {
-    operation: 'CollectionUpdated';
-    data: { path: CollectionPath; docs: Doc[]; snapshotCount: number };
+  export type Change = {
+    operation: 'Change';
+    data: { path: CollectionPath; docs: Doc[] };
   };
 
+  // TODO Should include more doc/collection related data.
   export type Error = {
     operation: 'Error';
     data: firebase.firestore.FirestoreError;
   };
 
-  export type Msg =
-    | DocumentCreated
-    | DocumentRead
-    | DocumentDeleted
-    | CollectionUpdated;
+  export type Msg = Change | Error;
 }

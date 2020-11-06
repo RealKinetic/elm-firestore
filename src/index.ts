@@ -10,6 +10,7 @@ import {
   callback,
 } from './types';
 import firebase from 'firebase';
+import Doc = Sub.Doc;
 
 /**
  *
@@ -93,18 +94,6 @@ const initAppState = ({
     return this.collections[path] && this.collections[path].isWatching;
   },
 
-  // Helps track how many times we've recieved data about a collection's docs.
-  // Useful for managing app load state (lazy loading docs especially).
-  getSnapshotCount: function (path) {
-    return this.collections[path]?.snapshotCount || 0;
-  },
-  incrementSnapshotCount: function (path) {
-    this.collections[path] = {
-      ...this.collections[path],
-      snapshotCount: this.getSnapshotCount(path) + 1,
-    };
-    return this.getSnapshotCount(path);
-  },
   // Hook Execution Helpers
   // Using "Optional Chaining"
   // https://www.typescriptlang.org/docs/handbook/release-notes/typescript-3-7.html#optional-chaining
@@ -189,44 +178,35 @@ const subscribeCollection = (appState: AppState, path: CollectionPath) => {
         snapshot
           .docChanges({ includeMetadataChanges: true })
           .forEach(change => {
+            let docState: DocState | undefined;
+
             // TODO add hook processing
-            let doc;
             const toDoc = (state: DocState) => ({
               path: path,
               id: change.doc.id,
               data: change.doc.data(),
               state,
             });
+
             if (change.type === 'modified' || change.type === 'added') {
-              const docState = change.doc.metadata.hasPendingWrites
+              docState = change.doc.metadata.hasPendingWrites
                 ? 'cached'
                 : 'saved';
-              doc = toDoc(docState);
             } else if (change.type === 'removed') {
-              doc = toDoc('deleted');
-              appState.toElm.send({
-                operation: 'DocumentDeleted',
-                data: doc.id,
-              });
+              docState = 'deleted';
             } else {
-              console.error('unknown doc change type', change.type);
+              console.error('unknown doc change.type', change.type);
             }
 
-            if (doc) docs.push(doc);
-
-            // TODO delete this logger if it doesn't prove too painful.
-            // appState.logger('DocChange', doc);
+            if (docState) docs.push(toDoc(docState));
           });
         if (docs.length > 0) {
-          const snapshotCount = appState.incrementSnapshotCount(path);
-          appState.toElm.send({
-            operation: 'CollectionUpdated',
-            data: { path, docs, snapshotCount },
-          });
-          appState.logger('CollectionUpdated', { path, count: docs.length });
+          appState.toElm.send({ operation: 'Change', data: { path, docs } });
+          appState.logger('Change', { path, count: docs.length });
         }
       },
       err => {
+        appState.toElm.send({ operation: 'Error', data: err });
         console.error('docChange', err);
       }
     );
@@ -275,15 +255,10 @@ const readCollection = (appState: AppState, cmd: Cmd.ReadCollection) => {
           state: 'saved',
         });
       });
-      if (docs.length > 0) {
-        const snapshotCount = appState.incrementSnapshotCount(path);
-        appState.toElm.send({
-          operation: 'CollectionUpdated',
-          data: { path: cmd.path, docs, snapshotCount },
-        });
-      }
+      appState.toElm.send({ operation: 'Change', data: { path, docs } });
     })
     .catch(err => {
+      appState.toElm.send({ operation: 'Error', data: err });
       console.error('docChange', err);
     });
 };
@@ -304,44 +279,46 @@ const createDocument = (appState: AppState, newDoc: Cmd.CreateDocument) => {
     firestoreDoc = collection.doc(newDoc.id);
   }
 
-  // Non-transient (persisted) documents will skip "new" and go straight to "saving".
-  const initialState = newDoc.isTransient ? 'new' : 'saving';
-
   // Instantiate data to send to Elm's Firestore.Sub,
   // and apply any user transformations if they have a hook.
   const doc: Sub.Doc = appState.formatData('create', path, {
     path,
     id: firestoreDoc.id,
     data: newDoc.data,
-    state: initialState,
+    state: 'new',
   });
-
-  appState.logger('DocumentCreated', doc);
-  appState.toElm.send({ operation: 'DocumentCreated', data: doc });
+  appState.logger('Document Created', doc);
+  appState.toElm.send({ operation: 'Change', data: { path, docs: [doc] } });
 
   // Return early if we don't actually want to persist to Firstore.
   // Mostly likely, we just wanted to generate an Id for a doc.
   if (newDoc.isTransient) {
     return;
   }
+  appState.toElm.send({
+    operation: 'Change',
+    data: { path, docs: [{ ...doc, state: 'saving' }] },
+  });
 
   firestoreDoc
     .set(doc.data, { merge: true })
     .then(() => {
-      const nextSubMsg: Sub.Msg = {
-        operation: 'DocumentRead',
-        data: { ...doc, state: 'saved' },
+      const savedDoc: Doc = { ...doc, state: 'saved' };
+      const nextSubMsg: Sub.Change = {
+        operation: 'Change',
+        data: { path, docs: [savedDoc] },
       };
-      appState.onSuccess('create', doc);
+      appState.onSuccess('create', savedDoc);
 
       // Send Msg to elm if collection is NOT already being watched.
       // Prevents duplicate data from being sent to Elm.
       if (!appState.isWatching(path)) {
-        appState.logger('DocumentRead', nextSubMsg);
+        appState.logger('Change', nextSubMsg);
         appState.toElm.send(nextSubMsg);
       }
     })
     .catch(err => {
+      appState.toElm.send({ operation: 'Error', data: err });
       appState.onError('create', doc, err);
       console.error('DocumentCreated', err);
     });
@@ -352,35 +329,38 @@ const createDocument = (appState: AppState, newDoc: Cmd.CreateDocument) => {
  * Read Handler
  *
  */
-const readDocument = (appState: AppState, document: Cmd.ReadDocument) => {
-  // SubData creation helper needed because of onSuccess/onError
-  const toSubMsg = (
-    docData: any,
-    state: DocState | 'error'
-  ): Sub.DocumentRead => ({
-    operation: 'DocumentRead',
-    data: {
-      path: document.path,
-      id: document.id,
-      data: docData,
-      state: state as DocState,
-    },
+const readDocument = (appState: AppState, doc: Cmd.ReadDocument) => {
+  const path = doc.path;
+
+  // toDoc creation helper needed because of onSuccess/onError
+  const toDoc = (docData: any, state: DocState | 'error'): Sub.Doc => ({
+    path,
+    id: doc.id,
+    data: docData,
+    state: state as DocState,
   });
 
   appState.firestore
-    .collection(document.path)
-    .doc(document.id)
+    .collection(doc.path)
+    .doc(doc.id)
     .get()
-    .then(doc => {
-      const state: DocState = doc.metadata.fromCache ? 'cached' : 'saved';
-      const subMsg = toSubMsg(doc.data(), state);
-      appState.onSuccess('read', subMsg.data);
-      appState.logger('DocumentRead', subMsg);
+    .then(docSnapshot => {
+      const state: DocState = docSnapshot.metadata.fromCache
+        ? 'cached'
+        : 'saved';
+      const doc = toDoc(docSnapshot.data(), state);
+      const subMsg: Sub.Change = {
+        operation: 'Change',
+        data: { path, docs: [doc] },
+      };
+      appState.onSuccess('read', doc);
+      appState.logger('read', subMsg);
       appState.toElm.send(subMsg);
     })
     .catch(err => {
-      appState.onError('read', toSubMsg(null, 'error').data, err);
-      console.error('DocumentRead', err);
+      appState.toElm.send({ operation: 'Error', data: err });
+      appState.onError('read', toDoc(null, 'error'), err);
+      console.error('read', err);
     });
 };
 
@@ -399,38 +379,33 @@ const updateDocument = (appState: AppState, updatedDoc: Cmd.UpdateDocument) => {
   });
   appState.logger('DocumentUpdated', docBeingSaved);
 
-  // Send "saving" state to CollectionUpdated if being watched
-  // otherwise send to DocumentRead
-  if (appState.isWatching(path)) {
-    const snapshotCount = appState.getSnapshotCount(path);
-    appState.toElm.send({
-      operation: 'CollectionUpdated',
-      data: { path, docs: [docBeingSaved], snapshotCount },
-    });
-  } else {
-    appState.toElm.send({ operation: 'DocumentRead', data: docBeingSaved });
-  }
+  appState.toElm.send({
+    operation: 'Change',
+    data: { path, docs: [docBeingSaved] },
+  });
 
   appState.firestore
     .collection(path)
     .doc(updatedDoc.id)
     .set(docBeingSaved, { merge: true })
     .then(() => {
-      appState.onSuccess('update', docBeingSaved);
+      const savedDoc: Sub.Doc = { ...docBeingSaved, state: 'saved' };
+      appState.onSuccess('update', savedDoc);
 
       // Send Msg to elm if collection is NOT already being watched.
       // Prevents duplicate data from being sent to Elm.
       if (!appState.isWatching(path)) {
-        appState.logger('updateDocument', docBeingSaved);
+        appState.logger('DocumentUpdate', savedDoc);
         appState.toElm.send({
-          operation: 'DocumentRead',
-          data: { ...docBeingSaved, state: 'saved' },
+          operation: 'Change',
+          data: { path, docs: [savedDoc] },
         });
       }
     })
     .catch(err => {
+      appState.toElm.send({ operation: 'Error', data: err });
       appState.onError('update', docBeingSaved, err);
-      console.error('updateDocument', err);
+      console.error('update', err);
     });
 };
 
@@ -451,27 +426,34 @@ const deleteDocument = (appState: AppState, document: Cmd.DeleteDocument) => {
     state: 'deleting',
   };
 
-  appState.logger('DocumentDeleting', docBeingDeleted);
+  appState.toElm.send({
+    operation: 'Change',
+    data: { path, docs: [docBeingDeleted] },
+  });
+
+  appState.logger('deleting', docBeingDeleted);
 
   appState.firestore
     .collection(document.path)
     .doc(document.id)
     .delete()
     .then(() => {
+      const deletedDoc: Sub.Doc = { ...docBeingDeleted, state: 'deleted' };
       // TODO Finish delete hook
       // appState.onSuccess('delete', nextSubMsg.data);
 
       // Send Msg to Elm if collection is NOT already being watched.
       // Prevents duplicate data from being sent to Elm.
-      if (!appState.isWatching(document.path)) {
-        appState.logger('DocumentDeleted', docBeingDeleted);
+      if (!appState.isWatching(path)) {
+        appState.logger('DocumentDeleted', deletedDoc);
         appState.toElm.send({
-          operation: 'DocumentDeleted',
-          data: document.id,
+          operation: 'Change',
+          data: { path, docs: [deletedDoc] },
         });
       }
     })
     .catch(err => {
+      appState.toElm.send({ operation: 'Error', data: err });
       appState.onError('delete', docBeingDeleted, err);
       console.error('deleteDocument', err);
     });
