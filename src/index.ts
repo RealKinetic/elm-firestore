@@ -387,7 +387,7 @@ const updateDocument = (appState: AppState, updatedDoc: Cmd.UpdateDocument) => {
   appState.firestore
     .collection(path)
     .doc(updatedDoc.id)
-    .set(docBeingSaved, { merge: true })
+    .set(updatedDoc.data, { merge: true })
     .then(() => {
       const savedDoc: Sub.Doc = { ...docBeingSaved, state: 'saved' };
       appState.onSuccess('update', savedDoc);
