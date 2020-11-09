@@ -26,13 +26,9 @@ export interface AppState {
   debug: boolean;
   logger: (origin: string, data: any) => void;
   isWatching: (path: CollectionPath) => boolean;
-  formatData: (
-    event: Hook.Event,
-    path: CollectionPath,
-    doc: Sub.Doc
-  ) => Sub.Doc;
-  onSuccess: (event: Hook.Event, subMsg: Sub.Doc) => void;
-  onError: (event: Hook.Event, subMsg: Sub.Doc, err: any) => void;
+  formatData: (event: Hook.Event, doc: Sub.Doc) => Sub.Doc;
+  onSuccess: (event: Hook.Event, doc: Sub.Doc) => void;
+  onError: (event: Hook.Event, doc: Sub.Doc, err: any) => void;
 }
 
 export interface CollectionState {
@@ -62,6 +58,7 @@ export interface App {
  *
  *  2. Callbacks if persisting succeeded or failed.
  *
+ * TODO Implement hooks to format incoming data before it's sent to Elm.
  */
 
 export namespace Hook {
@@ -73,12 +70,12 @@ export namespace Hook {
   }
 
   export interface Ops {
-    formatData: (subMsg: Sub.Doc) => Sub.Doc;
+    formatData: (subMsg: Sub.Doc) => firebase.firestore.DocumentData;
     onSuccess: (subMsg: Sub.Doc) => void;
     onError: (subMsg: Sub.Doc, err: any) => void;
   }
 
-  export type Event = 'create' | 'read' | 'update' | 'delete';
+  export type Event = 'create' | 'update' | 'delete';
   export type Op = 'formatData' | 'onSuccess' | 'onError';
 
   export interface SetParams {
