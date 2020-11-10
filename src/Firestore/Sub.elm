@@ -24,13 +24,25 @@ type Msg
 type alias DocChanges =
     { path : Collection.Path
     , docs : List Document
+    , metadata : Metadata
     }
 
 
+type alias Metadata =
+    { hasPendingWrites : Bool, fromCache : Bool }
+
+
 decodeCollectionChange =
-    Decode.map2 DocChanges
+    Decode.map3 DocChanges
         (Decode.field "path" Decode.string)
         (Decode.field "docs" <| Decode.list Document.decoder)
+        (Decode.field "metadata" decodeMetadata)
+
+
+decodeMetadata =
+    Decode.map2 Metadata
+        (Decode.field "hasPendingWrites" Decode.bool)
+        (Decode.field "fromCache" Decode.bool)
 
 
 {-| -}

@@ -188,7 +188,11 @@ export namespace Sub {
 
   export type Change = {
     operation: 'Change';
-    data: { path: CollectionPath; docs: Doc[] };
+    data: {
+      path: CollectionPath;
+      docs: Doc[];
+      metadata: { hasPendingWrites: boolean; fromCache: boolean };
+    };
   };
 
   // TODO Should include more doc/collection related data.

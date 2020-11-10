@@ -197,10 +197,12 @@ const subscribeCollection = (appState: AppState, path: CollectionPath) => {
 
             docs.push(doc);
           });
-        if (docs.length > 0) {
-          appState.toElm.send({ operation: 'Change', data: { path, docs } });
-          appState.logger('subscribeCollection', { path, count: docs.length });
-        }
+
+        appState.toElm.send({
+          operation: 'Change',
+          data: { path, docs, metadata: snapshot.metadata },
+        });
+        appState.logger('subscribeCollection', { path, count: docs.length });
       },
       err => {
         appState.toElm.send({ operation: 'Error', data: err });
@@ -254,7 +256,10 @@ const readCollection = (appState: AppState, cmd: Cmd.ReadCollection) => {
           state: doc.metadata.fromCache ? 'cached' : 'saved',
         });
       });
-      appState.toElm.send({ operation: 'Change', data: { path, docs } });
+      appState.toElm.send({
+        operation: 'Change',
+        data: { path, docs, metadata: snapshot.metadata },
+      });
       appState.logger('readCollection', { path, count: docs.length });
     })
     .catch(err => {
@@ -287,7 +292,14 @@ const createDocument = (appState: AppState, newDoc: Cmd.CreateDocument) => {
     data: newDoc.data,
     state: 'new',
   });
-  appState.toElm.send({ operation: 'Change', data: { path, docs: [doc] } });
+  appState.toElm.send({
+    operation: 'Change',
+    data: {
+      path,
+      docs: [doc],
+      metadata: { hasPendingWrites: true, fromCache: false },
+    },
+  });
   appState.logger('createDocument', doc);
 
   // Return early if we don't actually want to persist to Firstore.
@@ -297,7 +309,11 @@ const createDocument = (appState: AppState, newDoc: Cmd.CreateDocument) => {
   }
   appState.toElm.send({
     operation: 'Change',
-    data: { path, docs: [{ ...doc, state: 'saving' }] },
+    data: {
+      path,
+      docs: [{ ...doc, state: 'saving' }],
+      metadata: { hasPendingWrites: true, fromCache: false },
+    },
   });
 
   firestoreDoc
@@ -306,7 +322,11 @@ const createDocument = (appState: AppState, newDoc: Cmd.CreateDocument) => {
       const savedDoc: Doc = { ...doc, state: 'saved' };
       const nextSubMsg: Sub.Change = {
         operation: 'Change',
-        data: { path, docs: [savedDoc] },
+        data: {
+          path,
+          docs: [savedDoc],
+          metadata: { hasPendingWrites: false, fromCache: false },
+        },
       };
       appState.onSuccess('create', savedDoc);
 
@@ -351,7 +371,7 @@ const readDocument = (appState: AppState, doc: Cmd.ReadDocument) => {
       const doc = toDoc(docSnapshot.data(), state);
       const subMsg: Sub.Change = {
         operation: 'Change',
-        data: { path, docs: [doc] },
+        data: { path, docs: [doc], metadata: docSnapshot.metadata },
       };
       appState.toElm.send(subMsg);
       appState.logger('readDocument', subMsg);
@@ -378,7 +398,11 @@ const updateDocument = (appState: AppState, updatedDoc: Cmd.UpdateDocument) => {
 
   appState.toElm.send({
     operation: 'Change',
-    data: { path, docs: [docBeingSaved] },
+    data: {
+      path,
+      docs: [docBeingSaved],
+      metadata: { hasPendingWrites: true, fromCache: false },
+    },
   });
   appState.logger('updateDocument', docBeingSaved);
 
@@ -393,7 +417,11 @@ const updateDocument = (appState: AppState, updatedDoc: Cmd.UpdateDocument) => {
       if (!appState.isWatching(path)) {
         appState.toElm.send({
           operation: 'Change',
-          data: { path, docs: [savedDoc] },
+          data: {
+            path,
+            docs: [savedDoc],
+            metadata: { hasPendingWrites: false, fromCache: false },
+          },
         });
       }
       appState.onSuccess('update', savedDoc);
@@ -424,7 +452,11 @@ const deleteDocument = (appState: AppState, document: Cmd.DeleteDocument) => {
 
   appState.toElm.send({
     operation: 'Change',
-    data: { path, docs: [docBeingDeleted] },
+    data: {
+      path,
+      docs: [docBeingDeleted],
+      metadata: { hasPendingWrites: true, fromCache: false },
+    },
   });
 
   appState.logger('deleting', docBeingDeleted);
@@ -441,7 +473,11 @@ const deleteDocument = (appState: AppState, document: Cmd.DeleteDocument) => {
         appState.logger('DocumentDeleted', deletedDoc);
         appState.toElm.send({
           operation: 'Change',
-          data: { path, docs: [deletedDoc] },
+          data: {
+            path,
+            docs: [deletedDoc],
+            metadata: { hasPendingWrites: false, fromCache: false },
+          },
         });
       }
       appState.onSuccess('delete', deletedDoc);
