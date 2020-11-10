@@ -384,8 +384,8 @@ const updateDocument = (appState: AppState, updatedDoc: Cmd.UpdateDocument) => {
 
   appState.firestore
     .collection(path)
-    .doc(updatedDoc.id)
-    .set(updatedDoc.data, { merge: true })
+    .doc(docBeingSaved.id)
+    .set(docBeingSaved.data, { merge: true })
     .then(() => {
       const savedDoc: Sub.Doc = { ...docBeingSaved, state: 'saved' };
       // Send Msg to elm if collection is NOT already being watched.
@@ -396,7 +396,6 @@ const updateDocument = (appState: AppState, updatedDoc: Cmd.UpdateDocument) => {
           data: { path, docs: [savedDoc] },
         });
       }
-      appState.logger('updateDocument', savedDoc);
       appState.onSuccess('update', savedDoc);
     })
     .catch(err => {
