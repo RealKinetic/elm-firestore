@@ -4,6 +4,7 @@ module Firestore.Cmd exposing
     , deleteDocument
     , encode
     , processQueue
+    , readCollection
     , readDocument
     , unwatchCollection
     , updateDocument
@@ -13,6 +14,7 @@ module Firestore.Cmd exposing
 import Firestore.Collection as Collection exposing (Collection)
 import Firestore.Document as Document exposing (State(..))
 import Firestore.Internal exposing (Collection(..))
+import Firestore.Query as Query exposing (Query)
 import Json.Encode as Encode
 import Set
 
@@ -31,6 +33,7 @@ type alias Document =
 type Msg
     = SubscribeCollection Collection.Path
     | UnsubscribeCollection Collection.Path
+    | ReadCollection Collection.Path (List Query)
     | CreateDocument Bool Document
     | ReadDocument Document.Path
     | UpdateDocument Document
@@ -61,6 +64,19 @@ unwatchCollection :
     -> Cmd msg
 unwatchCollection { toFirestore, collection } =
     UnsubscribeCollection (Collection.getPath collection)
+        |> encode
+        |> toFirestore
+
+
+{-| -}
+readCollection :
+    { toFirestore : Encode.Value -> Cmd msg
+    , collection : Collection a
+    , queries : List Query
+    }
+    -> Cmd msg
+readCollection { toFirestore, collection, queries } =
+    ReadCollection (Collection.getPath collection) queries
         |> encode
         |> toFirestore
 
@@ -256,6 +272,13 @@ encode op =
             Encode.object
                 [ ( "name", Encode.string "UnsubscribeCollection" )
                 , ( "path", Encode.string path )
+                ]
+
+        ReadCollection path queries ->
+            Encode.object
+                [ ( "name", Encode.string "ReadCollection" )
+                , ( "path", Encode.string path )
+                , ( "queries", Encode.list Query.encode queries )
                 ]
 
         CreateDocument isTransient { path, id, data } ->
