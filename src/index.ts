@@ -292,14 +292,16 @@ const createDocument = (appState: AppState, newDoc: Cmd.CreateDocument) => {
     data: newDoc.data,
     state: 'new',
   });
+
   appState.toElm.send({
     operation: 'Change',
     data: {
       path,
       docs: [doc],
-      metadata: { hasPendingWrites: true, fromCache: false },
+      metadata: { hasPendingWrites: false, fromCache: false },
     },
   });
+
   appState.logger('createDocument', doc);
 
   // Return early if we don't actually want to persist to Firstore.
@@ -307,6 +309,7 @@ const createDocument = (appState: AppState, newDoc: Cmd.CreateDocument) => {
   if (newDoc.isTransient) {
     return;
   }
+
   appState.toElm.send({
     operation: 'Change',
     data: {
