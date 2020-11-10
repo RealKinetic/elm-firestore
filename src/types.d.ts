@@ -35,7 +35,6 @@ export interface CollectionState {
   isWatching: boolean;
   hooks?: Hook.Hooks;
   unsubscribe: () => void;
-  snapshotCount: number;
 }
 
 /**

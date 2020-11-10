@@ -33,7 +33,6 @@ type Collection a
         -- updates and a Collection with items indicating they're being saved.
         --
         { path : String
-        , snapshotCount : Int
         , docs : Dict Document.Id ( Document.State, a )
         , writeQueue : Set Document.Id
         , decoder : Decode.Decoder a

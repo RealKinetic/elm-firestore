@@ -41,11 +41,6 @@ setPath newPath (Collection collection) =
     Collection { collection | path = newPath }
 
 
-getSnapshotCount : Collection a -> Int
-getSnapshotCount (Collection collection) =
-    collection.snapshotCount
-
-
 {-| -}
 getWriteQueue : Collection a -> List ( Document.Id, State, a )
 getWriteQueue (Collection collection) =
@@ -84,7 +79,6 @@ empty :
 empty encoder decoder comparator =
     Collection
         { path = ""
-        , snapshotCount = 0
         , docs = Dict.empty
         , writeQueue = Set.empty
         , decoder = decoder
