@@ -92,7 +92,11 @@ msgDecoder =
 processChanges :
     DocChanges
     -> Collection a
-    -> ( Collection a, List Decode.Error )
+    ->
+        { collection : Collection a
+        , changes : List { id : String, doc : a }
+        , errors : List Decode.Error
+        }
 processChanges { path, docs } ((Collection collection) as opaqueCollection) =
     let
         updateExistingDoc : ( State, a ) -> ( State, a ) -> ( State, a )
@@ -136,31 +140,47 @@ processChanges { path, docs } ((Collection collection) as opaqueCollection) =
                        as they are captured beforehand.
                     -}
                     Just newDoc
+
+        reducer doc { docDict, changes, errors } =
+            case Decode.decodeValue collection.decoder doc.data of
+                Err newDocDecodeErr ->
+                    { docDict = docDict
+                    , changes = changes
+                    , errors = newDocDecodeErr :: errors
+                    }
+
+                Ok newDocDecoded ->
+                    { docDict =
+                        Dict.update doc.id
+                            (updateDoc ( doc.state, newDocDecoded ))
+                            docDict
+                    , changes = { id = doc.id, doc = newDocDecoded } :: changes
+                    , errors = errors
+                    }
+
+        wrapper acc =
+            { collection = Collection { collection | docs = acc.docDict }
+            , changes = acc.changes
+            , errors = acc.errors
+            }
     in
     if collection.path /= path then
-        ( opaqueCollection
-        , [ Encode.object
+        { collection = opaqueCollection
+        , changes = []
+        , errors =
+            [ Encode.object
                 [ ( "collectionPath", Encode.string collection.path )
                 , ( "docPath", Encode.string path )
                 ]
                 |> Decode.Failure "Doc and Collection path should match"
-          ]
-        )
+            ]
+        }
 
     else
         docs
-            |> List.foldl
-                (\doc ( newCollection, errors ) ->
-                    case Decode.decodeValue collection.decoder doc.data of
-                        Err newDocDecodeErr ->
-                            ( newCollection, newDocDecodeErr :: errors )
-
-                        Ok newDocDecoded ->
-                            ( Dict.update doc.id
-                                (updateDoc ( doc.state, newDocDecoded ))
-                                newCollection
-                            , errors
-                            )
-                )
-                ( collection.docs, [] )
-            |> Tuple.mapFirst (\newDocs -> Collection { collection | docs = newDocs })
+            |> List.foldl reducer
+                { docDict = collection.docs
+                , changes = []
+                , errors = []
+                }
+            |> wrapper
