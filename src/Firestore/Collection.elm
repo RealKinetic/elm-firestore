@@ -77,9 +77,15 @@ empty :
     -> Comparator a
     -> Collection a
 empty encoder decoder comparator =
+    fromDict encoder decoder comparator Dict.empty
+
+
+{-| -}
+fromDict : (a -> Encode.Value) -> Decode.Decoder a -> Comparator a -> Dict String a -> Collection a
+fromDict encoder decoder comparator seedValues =
     Collection
         { path = ""
-        , docs = Dict.empty
+        , docs = Dict.map (\_ v -> ( Saved, v )) seedValues
         , writeQueue = Set.empty
         , decoder = decoder
         , encoder = encoder
