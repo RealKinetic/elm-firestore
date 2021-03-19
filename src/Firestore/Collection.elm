@@ -87,7 +87,9 @@ empty encoder decoder comparator =
         }
 
 
-{-| -}
+{-| Insert a New document and add it to the write queue. It will be written
+once the collection is passed through Cmd.processQueue
+-}
 insert : Document.Id -> a -> Collection a -> Collection a
 insert id doc (Collection collection) =
     Collection
@@ -97,7 +99,8 @@ insert id doc (Collection collection) =
         }
 
 
-{-| -}
+{-| Insert a New document WITHOUT adding it to the write queue.
+-}
 insertTransient : Document.Id -> a -> Collection a -> Collection a
 insertTransient id doc (Collection collection) =
     Collection
