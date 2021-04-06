@@ -1,6 +1,6 @@
 {
   "name": "@realkinetic/elm-firestore",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Interact with Google's Cloud Firestore using Elm",
   "main": "src/index.ts",
   "repository": "git@github.com:RealKinetic/elm-firestore.git",
@@ -11,7 +11,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "firebase": "8.0.1"
+    "firebase": "8.3.2"
   },
   "devDependencies": {
     "elm-hot": "1.1.4",
