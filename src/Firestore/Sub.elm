@@ -94,7 +94,7 @@ processChanges :
     -> Collection a
     ->
         { collection : Collection a
-        , changes : List { id : String, doc : a }
+        , changes : List { id : String, state : State, doc : a }
         , errors : List Decode.Error
         }
 processChanges { path, docs } ((Collection collection) as opaqueCollection) =
@@ -154,7 +154,9 @@ processChanges { path, docs } ((Collection collection) as opaqueCollection) =
                         Dict.update doc.id
                             (updateDoc ( doc.state, newDocDecoded ))
                             docDict
-                    , changes = { id = doc.id, doc = newDocDecoded } :: changes
+                    , changes =
+                        { id = doc.id, state = doc.state, doc = newDocDecoded }
+                            :: changes
                     , errors = errors
                     }
 
