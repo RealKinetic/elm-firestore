@@ -10,7 +10,6 @@ import {
   callback,
 } from './types';
 import firebase from 'firebase';
-import Doc = Sub.Doc;
 
 /**
  *
@@ -322,7 +321,7 @@ const createDocument = (appState: AppState, newDoc: Cmd.CreateDocument) => {
   firestoreDoc
     .set(doc.data, { merge: true })
     .then(() => {
-      const savedDoc: Doc = { ...doc, state: 'saved' };
+      const savedDoc: Sub.Doc = { ...doc, state: 'saved' };
       const nextSubMsg: Sub.Change = {
         operation: 'Change',
         data: {
