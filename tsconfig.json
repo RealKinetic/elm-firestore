@@ -7,7 +7,8 @@
     "outDir": "lib",
     "sourceMap": true,
     "strict": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "lib": ["dom", "es2019"]
   },
   "compileOnSave": true,
   "include": ["src"]
