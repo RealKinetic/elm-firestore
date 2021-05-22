@@ -95,7 +95,7 @@ processChanges :
     ->
         { collection : Collection a
         , changes : List { id : String, doc : a }
-        , errors : List Decode.Error
+        , errors : List { id : String, error : Decode.Error }
         }
 processChanges { path, docs } ((Collection collection) as opaqueCollection) =
     let
@@ -146,7 +146,7 @@ processChanges { path, docs } ((Collection collection) as opaqueCollection) =
                 Err newDocDecodeErr ->
                     { docDict = docDict
                     , changes = changes
-                    , errors = newDocDecodeErr :: errors
+                    , errors = { id = doc.id, error = newDocDecodeErr } :: errors
                     }
 
                 Ok newDocDecoded ->
@@ -168,11 +168,14 @@ processChanges { path, docs } ((Collection collection) as opaqueCollection) =
         { collection = opaqueCollection
         , changes = []
         , errors =
-            [ Encode.object
-                [ ( "collectionPath", Encode.string collection.path )
-                , ( "docPath", Encode.string path )
-                ]
-                |> Decode.Failure "Doc and Collection path should match"
+            [ { id = "n/a"
+              , error =
+                    Encode.object
+                        [ ( "collectionPath", Encode.string collection.path )
+                        , ( "docPath", Encode.string path )
+                        ]
+                        |> Decode.Failure "Doc and Collection path should match"
+              }
             ]
         }
 
