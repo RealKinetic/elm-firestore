@@ -1,8 +1,12 @@
 {
   "name": "@realkinetic/elm-firestore",
-  "version": "1.0.1",
+  "version": "1.0.8",
   "description": "Interact with Google's Cloud Firestore using Elm",
-  "main": "src/index.ts",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
   "repository": "git@github.com:RealKinetic/elm-firestore.git",
   "contributors": [
     "Coury Ditch",
@@ -10,13 +14,8 @@
     "Robert Kluin"
   ],
   "license": "MIT",
-  "dependencies": {
-    "firebase": "8.3.2"
-  },
   "devDependencies": {
-    "elm-hot": "1.1.4",
-    "node-elm-compiler": "5.0.4",
-    "parcel": "1.12.4",
+    "firebase": "8.3.3",
     "typescript": "3.9.3"
   }
 }

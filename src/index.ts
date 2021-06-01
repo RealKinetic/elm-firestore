@@ -8,7 +8,7 @@ import {
   Cmd,
   Sub,
   callback,
-} from './types';
+} from './interfaces';
 import firebase from 'firebase';
 
 /**
@@ -16,7 +16,7 @@ import firebase from 'firebase';
  * App Initialzation
  *
  */
-export const init = (constructor: Constructor) => {
+const init = (constructor: Constructor): App => {
   const appState = initAppState(constructor);
   const elmSubscribe: callback = constructor.fromElm.subscribe;
 
@@ -515,3 +515,5 @@ const assignDeeplyNested = (
   lastObj[lastKey] = val;
   return obj;
 };
+
+export default { init };
