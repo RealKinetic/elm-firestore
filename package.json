@@ -1,5 +1,5 @@
 {
-  "name": "@realkinetic/elm-firestore",
+  "name": "@witful/elm-firestore",
   "version": "1.0.8",
   "description": "Interact with Google's Cloud Firestore using Elm",
   "main": "lib/index.js",
