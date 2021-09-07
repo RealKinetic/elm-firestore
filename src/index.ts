@@ -342,7 +342,7 @@ const createDocument = (appState: AppState, newDoc: Cmd.CreateDocument) => {
     .catch(err => {
       appState.toElm.send({ operation: 'Error', data: err });
       appState.onError('create', doc, err);
-      console.error('createDocument', err);
+      console.error({ loc: 'createDocument', newDoc, err });
     });
 };
 
