@@ -153,6 +153,30 @@ update id fn ((Collection collection) as collection_) =
         |> Maybe.withDefault collection_
 
 
+transientUpdate : Document.Id -> (a -> a) -> Collection a -> Collection a
+transientUpdate id fn ((Collection collection) as collection_) =
+    let
+        updateIfChanged ( state, doc ) =
+            let
+                updatedDoc =
+                    fn doc
+            in
+            if doc == updatedDoc then
+                Nothing
+
+            else
+                Just
+                    { collection
+                        | docs = Dict.insert id ( state, updatedDoc ) collection.docs
+                    }
+    in
+    Dict.get id collection.docs
+        |> Maybe.andThen updateIfChanged
+        -- Return the same collection if nothing changed; plays nice with Html.lazy
+        |> Maybe.map Collection
+        |> Maybe.withDefault collection_
+
+
 {-| Use if you don't want to immediately delete something off the server,
 and you want to batch your updates/deletes with `Firestore.Cmd.processQueue`.
 -}
