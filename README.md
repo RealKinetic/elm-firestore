@@ -1,4 +1,7 @@
 # elm-firestore
+
+*Note: Very alpha. Use at your own risk.*
+
 Interact with Google's Cloud Firestore using Elm
 
 One of the most pleasurable stacks to develop apps on: Elm + Firebase/Firestore
