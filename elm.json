@@ -3,7 +3,7 @@
     "name": "realkinetic/elm-firestore",
     "summary": "Interact with Google's Cloud Firestore using Elm",
     "license": "MIT",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "exposed-modules": [
         "Firestore.Collection",
         "Firestore.Document",
