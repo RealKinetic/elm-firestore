@@ -153,6 +153,35 @@ update id fn ((Collection collection) as collection_) =
         |> Maybe.withDefault collection_
 
 
+{-| There's no guarantee that a transient update will stick around on the document,
+thus the name transient update. There are cases where the update could be
+overwritten/reverted, e.g., firestore sends us the same document via onSnapshot,
+even if comparator(newDoc, oldDoc) === Eq, the newDoc will be given precedence.
+-}
+transientUpdate : Document.Id -> (a -> a) -> Collection a -> Collection a
+transientUpdate id fn ((Collection collection) as collection_) =
+    let
+        updateIfChanged ( state, doc ) =
+            let
+                updatedDoc =
+                    fn doc
+            in
+            if doc == updatedDoc then
+                Nothing
+
+            else
+                Just
+                    { collection
+                        | docs = Dict.insert id ( state, updatedDoc ) collection.docs
+                    }
+    in
+    Dict.get id collection.docs
+        |> Maybe.andThen updateIfChanged
+        -- Return the same collection if nothing changed; plays nice with Html.lazy
+        |> Maybe.map Collection
+        |> Maybe.withDefault collection_
+
+
 {-| Use if you don't want to immediately delete something off the server,
 and you want to batch your updates/deletes with `Firestore.Cmd.processQueue`.
 -}
