@@ -15,7 +15,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "firebase": "8.3.3",
+    "firebase": "9.4.0",
     "typescript": "3.9.3"
   }
 }

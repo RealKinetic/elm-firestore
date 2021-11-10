@@ -9,7 +9,7 @@ import {
   Sub,
   callback,
 } from './interfaces';
-import firebase from 'firebase';
+import firebase from 'firebase/compat';
 
 /**
  *
