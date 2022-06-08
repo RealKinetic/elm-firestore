@@ -432,85 +432,25 @@ update msg model =
 handleFirestoreMsg : Model -> Firestore.Sub.Msg -> ( Model, Cmd Msg )
 handleFirestoreMsg model msg =
     case msg of
-        Firestore.Sub.Change changeType doc ->
+        Firestore.Sub.Change docChanges ->
             let
-                newNotesCollection =
-                    Firestore.Sub.processChange doc model.notes
+                { collection, changes, errors } =
+                    Firestore.Sub.processChanges docChanges model.notes
             in
-            ( { model
-                | notes = newNotesCollection |> Result.withDefault model.notes
-              }
-            , Cmd.batch
-                [ handleChange model changeType doc
-                , case newNotesCollection of
-                    Err decodeErr ->
-                        -- Log error
-                        Cmd.none
-
-                    Ok _ ->
-                        Cmd.none
-                ]
+            ( { model | notes = collection }
+            ,  Cmd.none
             )
-
-        Firestore.Sub.Read document ->
-            if document.path == Collection.getPath model.notes then
-                case Collection.decodeValue model.notes document.data of
-                    Ok note ->
-                        ( { model
-                            | readItem =
-                                Just ( document.id, document.state, note )
-                          }
-                        , Cmd.none
-                        )
-
-                    Err err ->
-                        ( model, Cmd.none )
-
-            else
-                ( model, Cmd.none )
 
         Firestore.Sub.Error error ->
             case error of
-                Firestore.Sub.DecodeError decodeError ->
-                    let
-                        _ =
-                            Debug.log "decode error" (Decode.errorToString decodeError)
-                    in
+                Firestore.Sub.DecodeError _ ->
                     ( model, Cmd.none )
 
-                Firestore.Sub.FirestoreError firestoreError ->
-                    let
-                        _ =
-                            Debug.log "firestore error" firestoreError
-                    in
+                Firestore.Sub.FirestoreError _ ->
                     ( model, Cmd.none )
-
-
-handleChange : Model -> Firestore.Sub.ChangeType -> Firestore.Document.Document -> Cmd Msg
-handleChange model changeType doc =
-    case changeType of
-        Firestore.Sub.DocumentCreated ->
-            -- We could decide to fire off a Navigation event here for instance.
-            if isNotes model doc then
-                Cmd.none
-
-            else
-                Cmd.none
-
-        Firestore.Sub.DocumentUpdated ->
-            Cmd.none
-
-        Firestore.Sub.DocumentDeleted ->
-            Cmd.none
-
 
 
 -- Helpers
-
-
-isNotes : Model -> Firestore.Document.Document -> Bool
-isNotes { notes } doc =
-    Collection.getPath notes == doc.path
 
 
 alterTitle noteTitle =

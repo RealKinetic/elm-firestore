@@ -1,13 +1,15 @@
-import firebase from 'firebase/app';
-import 'firebase/auth';
-import 'firebase/firestore';
-import * as ElmFirestore from '../src/index';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
+import  ElmFirestore from '../src/index';
 // @ts-ignore - Using parcel, which allows importing Elm files
 import { Elm } from './src/Main.elm';
-import firebaseConfig from './firebaseConfig';
+
+// NOTE: replace this with your firebase config!
+const yourFirebaseConfig = {  }
 
 // Set up Firebase, Firestore
-firebase.initializeApp(firebaseConfig);
+firebase.initializeApp(yourFirebaseConfig);
 let firestore = firebase.firestore();
 firestore.settings({});
 
